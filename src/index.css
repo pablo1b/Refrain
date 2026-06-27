@@ -1,0 +1,250 @@
+/* ============================================================
+   Refrain — global styles & design tokens
+   Colour language (fixed meaning across surfaces):
+     lime  = live · transport · the cycle
+     amber = the Maestro · AI authorship
+     blue  = selection · structure
+     ink   = stage surface (dark default)
+   Type: Spectral (display) · Hanken Grotesk (UI) · JetBrains Mono (code)
+   ============================================================ */
+
+:root {
+  --font-display: 'Spectral', Georgia, serif;
+  --font-ui: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* signal colours — semantically stable, brightness varies by theme */
+  --voice-drums: #6aa0ff;
+  --voice-bass: #c58cf2;
+  --voice-pad: #5fd3b0;
+}
+
+/* ---------------- DARK (default) ---------------- */
+html[data-theme='dark'] {
+  --live: #c7f24a;        /* lime */
+  --live-ink: #0d0d11;    /* text on lime */
+  --maestro: #f2a007;     /* amber */
+  --maestro-deep: #f2a007;
+  --select: #6aa0ff;      /* blue */
+  --panic: #d5322e;
+  --hush: #f2a007;
+  --voice-hats: #c7f24a;
+
+  --bg: #0d0d11;          /* app / stage */
+  --bg-deep: #0a0a0d;
+  --bg-deeper: #070709;
+  --panel: #0b0b0f;
+  --titlebar: #101015;
+  --elev: #16161c;        /* inputs, transport pill */
+  --elev-2: #13131a;      /* cards */
+  --elev-3: #121217;
+
+  --line: #1f1f27;        /* primary borders */
+  --line-2: #23232b;
+  --line-3: #1a1a21;
+  --line-4: #26262f;
+  --line-5: #2a2a33;
+  --line-6: #33333d;
+
+  --text: #e8e6df;        /* brightest */
+  --text-1: #c9c7bf;      /* primary */
+  --text-2: #8a887f;      /* muted */
+  --text-3: #6e6a60;
+  --text-dim: #5a574f;    /* dim labels */
+  --gutter: #3c3a34;      /* line numbers */
+
+  /* maestro bubble surfaces */
+  --user-bubble: #1a1a21;
+  --maestro-bubble: #15140e;
+  --maestro-bubble-line: #3a3115;
+  --lane-sel: #0f100a;
+  --lane-sel-line: #2c3315;
+
+  /* code syntax (cool palette, never competes with signal colours) */
+  --c-func: #6aa0ff;
+  --c-voice: #5fd3b0;
+  --c-string: #e0a75c;
+  --c-num: #c58cf2;
+  --c-punct: #8e8b82;
+  --c-comment: #6b675e;
+
+  --diff-add-bg: rgba(199, 242, 74, 0.09);
+  --diff-add-line: #c7f24a;
+  --diff-add-mark: #8fae3a;
+  --diff-del-bg: rgba(255, 92, 92, 0.09);
+  --diff-del-line: #ff5c5c;
+  --diff-del-text: #7e5a52;
+  --active-line: rgba(199, 242, 74, 0.07);
+
+  --shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+/* ---------------- LIGHT ---------------- */
+html[data-theme='light'] {
+  --live: #5e7e14;        /* deep lime */
+  --live-ink: #fbfaf6;
+  --maestro: #b86b12;     /* amber, daylight */
+  --maestro-deep: #b86b12;
+  --select: #2563c9;
+  --panic: #c0211d;
+  --hush: #b86b12;
+  --voice-hats: #5e7e14;
+
+  --bg: #faf8f2;          /* paper */
+  --bg-deep: #f4f2ec;
+  --bg-deeper: #f0ede4;
+  --panel: #f4f2ec;
+  --titlebar: #fbfaf6;
+  --elev: #ffffff;
+  --elev-2: #fbfaf6;
+  --elev-3: #ffffff;
+
+  --line: #e7e1d4;
+  --line-2: #e2dccf;
+  --line-3: #f0ede4;
+  --line-4: #e2dccf;
+  --line-5: #d8d2c4;
+  --line-6: #c9c2b2;
+
+  --text: #1a1712;
+  --text-1: #211e18;
+  --text-2: #544e44;
+  --text-3: #847c6e;
+  --text-dim: #847c6e;
+  --gutter: #b5ae9e;
+
+  --user-bubble: #f0ede4;
+  --maestro-bubble: #fbf4e6;
+  --maestro-bubble-line: #ead9b4;
+  --lane-sel: #fbfcf7;
+  --lane-sel-line: #bfe0c8;
+
+  --c-func: #2563c9;
+  --c-voice: #0e7c66;
+  --c-string: #a8631a;
+  --c-num: #7a4fc2;
+  --c-punct: #8a8273;
+  --c-comment: #9a917e;
+
+  --diff-add-bg: rgba(94, 126, 20, 0.1);
+  --diff-add-line: #5e7e14;
+  --diff-add-mark: #3a6a0e;
+  --diff-del-bg: rgba(192, 33, 29, 0.08);
+  --diff-del-line: #c0211d;
+  --diff-del-text: #a06a5a;
+  --active-line: rgba(94, 126, 20, 0.1);
+
+  --shadow: 0 18px 44px -26px rgba(0, 0, 0, 0.28);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+/* ---- the signature animations ----
+   The Cycle-clock playhead is driven by JS (rAF reading the real scheduler
+   clock), not a CSS keyframe, so prefers-reduced-motion is handled there. */
+@keyframes refrPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes refrSettle {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes refrFlash {
+  from {
+    background: var(--active-line);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* motion that respects the room */
+@media (prefers-reduced-motion: reduce) {
+  .refr-settle {
+    animation: none !important;
+  }
+}
+
+/* ---- scrollbars: quiet, dark-IDE feel ---- */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-5);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+/* ---- shared atoms ---- */
+.mono {
+  font-family: var(--font-mono);
+}
+.serif {
+  font-family: var(--font-display);
+}
+.refr-settle {
+  animation: refrSettle 0.18s ease-out both;
+}
+
+/* CodeMirror baseline overrides (theme handled in editor extension) */
+.cm-editor {
+  height: 100%;
+  background: transparent;
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.9;
+}

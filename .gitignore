@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# test / coverage artifacts
+coverage/
+.vite/
+
+# editor / OS
+.DS_Store
+*.local
