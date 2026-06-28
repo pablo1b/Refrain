@@ -123,7 +123,7 @@ describe('MODEL_OPTIONS', () => {
   // silent reorder is caught.
   it.each([
     ['openai', 'gpt-4o'],
-    ['google', 'gemini-3.5-flash'],
+    ['google', 'gemini-flash-lite-latest'],
     ['ollama', 'llama3'],
   ] as const)('lists the %s default model first', (id, model) => {
     expect(MODEL_OPTIONS[id][0]).toBe(model);

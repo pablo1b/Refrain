@@ -31,6 +31,9 @@ Protocol + agent rubric: **`TESTING.md`**.
 3. **Agent manual** (Chrome DevTools MCP vs live app) — `TESTING.md` rubric.
 `npm run test:all` · `npm run coverage` · `npm run typecheck`.
 
+**After any code change, run the affected tests before reporting done** — and update
+tests whose assertions the change invalidates (e.g. editing a constant pinned by a test).
+
 **Always mock the two boundaries (tiers 1–2):**
 - Engine: `vi.mock('../audio/strudelEngine', async () => ({ engine: (await import('../../tests/mocks/engine')).createFakeEngine() }))`; `(engine as any).__reset()` in `beforeEach`.
 - LLM in `providers.ts`: stub `fetch` via `tests/helpers/llm.ts`. LLM in the store: partial-mock `../llm/providers`, replace only `chat`.

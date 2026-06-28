@@ -13,7 +13,7 @@ export function defaultProviders(): Provider[] {
   return [
     { id: 'anthropic', label: 'Anthropic', key: '', model: 'claude-sonnet-4-6', connected: false },
     { id: 'openai', label: 'OpenAI', key: '', model: 'gpt-4o', connected: false },
-    { id: 'google', label: 'Google', key: '', model: 'gemini-3.5-flash', connected: false },
+    { id: 'google', label: 'Google', key: '', model: 'gemini-flash-lite-latest', connected: false },
     { id: 'ollama', label: 'Ollama', key: '', model: 'llama3', endpoint: 'http://127.0.0.1:11434', connected: false, local: true },
   ];
 }
@@ -31,13 +31,14 @@ export function defaultRoles(): RoleRoute[] {
 export const MODEL_OPTIONS: Record<Provider['id'], string[]> = {
   anthropic: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'o3', 'o3-mini'],
-  // current Gemini Flash family (verified against ai.google.dev, June 2026)
+  // Gemini Flash family; -latest aliases track current
   google: [
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
     'gemini-3.5-flash',
     'gemini-3.1-flash-lite',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
   ],
   ollama: ['llama3', 'llama3.1', 'mistral', 'qwen2.5', 'phi3'],
 };

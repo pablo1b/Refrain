@@ -157,7 +157,12 @@ As of the initial build (all green):
   scenarios (M01–M04, M09) all `pass`, **zero console errors**; see
   `tests/manual/last-run.md`. Run the full 15-scenario pass with the rubric.
 
-Two minor hygiene findings surfaced by the live run (not test failures):
-- The Maestro `<textarea>` has no `id`/`name` (a11y issue flagged by DevTools).
-- `@strudel/core was loaded more than once` (dev warning — consider deduping the
-  `@strudel/*` dependency versions; `npm ls @strudel/core`).
+Two minor hygiene findings surfaced by the live run (both now **fixed**):
+- The Maestro `<textarea>` had no `id`/`name` (a11y) — added `id`/`name`/`aria-label`.
+- `@strudel/core was loaded more than once` (dev warning). Root cause was *not* a
+  version conflict (`npm ls @strudel/core` shows a single deduped `1.2.6`):
+  `@strudel/web` is a self-contained bundle with its own copy of `core` baked in,
+  while importing `@strudel/transpiler` standalone pulled in a *second* `core`
+  instance. Fix: the engine now reuses `@strudel/web`'s re-exported `evaluate`
+  for clock-tick queries instead of importing `@strudel/transpiler`, so `core`
+  loads exactly once (`src/audio/strudelEngine.ts`; `vite.config.ts` comment updated).
