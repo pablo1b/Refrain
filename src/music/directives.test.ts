@@ -34,7 +34,7 @@ describe('applyDirective — simple append family', () => {
     ['darker', '.lpf(600)'],
     ['brighter', '.lpf(4500)'],
     ['staccato', '.clip(0.4)'],
-    ['legato', '.clip(1).legato(1.4)'],
+    ['legato', '.legato(1.4)'],
     ['marcato', '.gain("1.3 0.9 1.1 0.9")'],
     ['cantabile', '.gain(perlin.range(0.6, 0.9)).clip(1.2)'],
     ['confuoco', '.distort("1.6:0.4").gain(1.1)'],

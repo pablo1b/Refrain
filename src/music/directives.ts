@@ -162,7 +162,10 @@ export function applyDirective(
       return ok(appendChain(fullCode, voice, m), `Staccato on ${where} — ${code(m)} shortens each note so it bites.`);
     }
     case 'legato': {
-      const m = `.clip(1).legato(1.4)`;
+      // legato() and clip() are the *same* core control (registered together as
+      // c("clip", "legato")), so a leading .clip(1) would just be overwritten —
+      // .legato(1.4) alone lengthens each note past its slot to connect the line.
+      const m = `.legato(1.4)`;
       return ok(appendChain(fullCode, voice, m), `Legato on ${where} — ${code(m)} lengthens and connects the line.`);
     }
     case 'marcato': {
