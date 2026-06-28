@@ -19,6 +19,25 @@ Dev server: `npm run dev` (vite.config → :5173; commonly run on **:5174**).
   `engine.*` and `chat()`.
 - `src/components/*` + `src/theme/tokens.ts` (`cssVar` → `getComputedStyle`) — need real DOM.
 
+## Strudel — read the matching skill before touching engine or pattern code
+
+Four skills (verified against the live source, **codeberg.org/uzu/strudel** — GitHub is
+archived) carry the authoritative Strudel vocabulary. The hard rule **"method names must
+be real — don't invent functions"** is enforced by **`strudel-patterns`**: if a method
+isn't in that skill, confirm it before emitting.
+
+- **`/strudel-patterns`** — mini-notation, notes/scales/chords, the transform vocabulary.
+  Read when editing `directives.ts`, `lanes.ts`, or `parseScore` (the event-estimate).
+- **`/strudel-engine`** — the `@strudel/web` boundary: `initStrudel`/`prebake`, repl +
+  scheduler, `evaluate`/panic, the cps clock, transpiler `queryArc`, the "core loaded
+  twice" warning. Read when touching `strudelEngine.ts` / the audio-clock boundary.
+- **`/strudel-sounds`** — `s()`/`n()`/`note()`, banks, sample-pack loading + the JSON map
+  format, synths (FM/additive/ADSR), and every effect control. Read when changing
+  instruments, samples, or the effect verbs.
+- **`/strudel-extensions`** — optional packages (MIDI, OSC, SoundFonts, Hydra, …): the
+  install/import/register recipe + where to wire each into the engine. Read for "add
+  capability X to Refrain".
+
 ## Testing — read this before writing tests
 
 Full guide: **`.claude/skills/write-tests/SKILL.md`** (invoke `/write-tests`).
@@ -55,4 +74,4 @@ logic high; components/boundaries covered by tiers 2–3.
 
 Match the surrounding code: 2-space indent, single quotes, no semicolon-free style
 (semicolons used), comment density like the existing modules (a short *why* header per
-file). Strudel method names must be real — don't invent functions.
+file). Strudel method names must be real — don't invent functions (authority: `/strudel-patterns`).

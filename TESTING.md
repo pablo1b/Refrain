@@ -159,10 +159,14 @@ As of the initial build (all green):
 
 Two minor hygiene findings surfaced by the live run (both now **fixed**):
 - The Maestro `<textarea>` had no `id`/`name` (a11y) — added `id`/`name`/`aria-label`.
-- `@strudel/core was loaded more than once` (dev warning). Root cause was *not* a
-  version conflict (`npm ls @strudel/core` shows a single deduped `1.2.6`):
-  `@strudel/web` is a self-contained bundle with its own copy of `core` baked in,
-  while importing `@strudel/transpiler` standalone pulled in a *second* `core`
-  instance. Fix: the engine now reuses `@strudel/web`'s re-exported `evaluate`
-  for clock-tick queries instead of importing `@strudel/transpiler`, so `core`
-  loads exactly once (`src/audio/strudelEngine.ts`; `vite.config.ts` comment updated).
+- `@strudel/core was loaded more than once` (dev warning). Not a version conflict
+  (`npm ls @strudel/core` shows a single deduped `1.2.6`): `@strudel/web` is a
+  self-contained bundle with its own `core` baked in, and the engine *also* uses
+  `@strudel/transpiler` (a tiny, pure `core.evaluate`) for read-only clock-tick
+  queries — that pulls a *second* `core` instance, which logs the warning.
+  We must keep the standalone transpiler: web's exported `evaluate` is bound to
+  the live playback repl (autoplay on), so using it for queries hijacked the
+  scheduler and silenced playback. The second core is only used for one-shot
+  read-only `queryArc` (its objects never re-enter web's repl), so it's harmless;
+  the engine clears `globalThis._strudelLoaded` around the transpiler import to
+  suppress the benign warning (`src/audio/strudelEngine.ts`; `vite.config.ts`).
