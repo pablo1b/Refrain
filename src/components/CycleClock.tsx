@@ -16,6 +16,9 @@ export function CycleClock({ size = 118, strong = false }: { size?: number; stro
   const C = VB / 2;
 
   useEffect(() => {
+    // Only sweep while the transport is playing; when stopped the hand holds
+    // its last position rather than spinning on the still-running clock.
+    if (!playing) return;
     let raf = 0;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let lastDeg = -1;
@@ -31,7 +34,7 @@ export function CycleClock({ size = 118, strong = false }: { size?: number; stro
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [playing]);
 
   const handColor = playing ? 'var(--live)' : 'var(--text-dim)';
 

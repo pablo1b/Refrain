@@ -73,12 +73,30 @@ class StrudelEngine {
         });
         this.repl = repl as Repl;
 
-        // a separate, non-playing evaluator for clock queries
+        // A separate, non-playing evaluator for clock queries. We must NOT use
+        // @strudel/web's exported `evaluate` — that one is bound to the live
+        // playback repl (it calls `repl.evaluate(code, /*autoplay*/ true)`), so
+        // querying a voice would hijack the scheduler and replace the score.
+        // @strudel/transpiler.evaluate is the *pure* `core.evaluate(code, F)`:
+        // it returns { pattern } with no repl, no scheduler, no side effects.
+        //
+        // It does pull in a second @strudel/core instance, which logs the benign
+        // "loaded more than once" warning. That second core is only ever used
+        // here for read-only one-shot queryArc (tick drawing) — its objects are
+        // never fed back into web's repl — so the duplication is harmless. We
+        // clear the load flag around the import to suppress the noisy warning
+        // (graceful: if the internal flag name ever changes, the warning simply
+        // returns; nothing breaks).
+        const g = globalThis as any;
+        const hadCore = g._strudelLoaded;
+        g._strudelLoaded = undefined;
         try {
-          const t = await import('@strudel/transpiler');
-          this.transpile = (code: string) => (t as any).evaluate(code);
-        } catch {
-          this.transpile = null;
+          const { evaluate: transpilerEvaluate } = await import('@strudel/transpiler');
+          this.transpile = typeof transpilerEvaluate === 'function'
+            ? (code: string) => transpilerEvaluate(code)
+            : null;
+        } finally {
+          g._strudelLoaded = hadCore ?? true;
         }
 
         this.set('ready');
