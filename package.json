@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Refrain — an AI-native live-coding music IDE, built on Strudel. Compose the loop by hand or by intention.",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

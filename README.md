@@ -97,3 +97,17 @@ preserves the same grammar.
 A faithful MVP of the design. The audio engine, the cycle, directives, diffs, variation lanes, themes,
 and all eight surfaces are wired and runnable. MIDI/OSC out, neural sample generation, true score
 engraving, and multiplayer are out of scope here (the spec lists them as "next/explore/open").
+
+## License
+
+Refrain is licensed under the **GNU Affero General Public License v3.0 or later**
+(`AGPL-3.0-or-later`) — see [`LICENSE`](./LICENSE) for the full text.
+
+Refrain bundles [`@strudel/web`](https://codeberg.org/uzu/strudel) (the live source;
+GitHub is an archive), which is itself AGPL-3.0 — so the AGPL is the matching license
+for the combined work that ships to the browser. Because the AGPL covers **network use**
+(§13), any publicly hosted instance must offer its users the complete corresponding
+source of that running version; this repository is that source. If you deploy a modified
+Refrain, keep your fork's source available to its users.
+
+Copyright © 2026 Pablo Bariola and the Refrain contributors.
