@@ -12,3 +12,6 @@ coverage/
 # editor / OS
 .DS_Store
 *.local
+
+# temp
+temp/
