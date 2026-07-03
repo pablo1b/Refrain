@@ -212,6 +212,7 @@ interface RefrainState {
   // history / time-travel (spec §07)
   rewind: (commitId: string) => void;
   forkFrom: (commitId: string) => void;
+  reproduceCommit: (commitId: string) => void;
 
   // editor context pins (spec §02)
   addPin: (pin: Omit<ContextPin, 'id'>) => void;
@@ -377,17 +378,26 @@ export const useStore = create<RefrainState>((set, get) => {
    * is the current HEAD, so a linear session grows a line and a rewind+edit
    * grows a branch. Coalesces trivial no-ops (same score as HEAD, non-parked).
    */
-  function pushCommit(label: string, provenance: Provenance, opts?: { parked?: boolean }): string {
+  function pushCommit(
+    label: string,
+    provenance: Provenance,
+    opts?: { parked?: boolean; score?: string; parentId?: string | null; force?: boolean },
+  ): string {
     const st = get();
-    const parent = st.history.find((c) => c.id === st.headId) ?? null;
-    if (!opts?.parked && parent && parent.score === st.score) {
-      return parent.id; // nothing changed — don't clutter the tree
+    const parentId = opts?.parentId !== undefined ? opts.parentId : st.headId;
+    const parent = st.history.find((c) => c.id === parentId) ?? null;
+    const score = opts?.score ?? st.score;
+    // Coalesce trivial no-ops (same score as parent) unless it's a parked fork
+    // or an explicitly forced commit (a named ⌘S checkpoint bookmarks a moment
+    // even when the code is unchanged).
+    if (!opts?.parked && !opts?.force && parent && parent.score === score) {
+      return parent.id;
     }
     const commit: Commit = {
       id: id('c'),
-      parentId: st.headId,
+      parentId,
       label,
-      score: st.score,
+      score,
       voiceState: JSON.parse(JSON.stringify(st.voiceState)),
       scenes: JSON.parse(JSON.stringify(st.scenes)),
       provenance,
@@ -405,12 +415,17 @@ export const useStore = create<RefrainState>((set, get) => {
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       const s = get();
+      // Bound the serialized history so autosave can't blow the ~5MB localStorage
+      // quota over a long session (each commit carries a full score snapshot).
+      // The in-memory tree stays complete; only the persisted tail is capped.
+      const MAX_PERSISTED = 400;
+      const history = s.history.length > MAX_PERSISTED ? s.history.slice(-MAX_PERSISTED) : s.history;
       const blob: ProjectBlob = {
         id: s.projectId,
         name: s.projectName,
         score: s.score,
         committed: s.committed,
-        history: s.history,
+        history,
         headId: s.headId,
         scenes: s.scenes,
         seed: s.seed,
@@ -442,6 +457,10 @@ export const useStore = create<RefrainState>((set, get) => {
       stagedEdit: null,
       hunkEnabled: {},
       laneSet: null,
+      // drop the previous project's editor context — pins/arc reference its
+      // voices & line numbers, which don't exist in the newly-loaded song.
+      pins: [],
+      arcSelection: null,
       ...(parsedCps != null ? { cps: parsedCps } : {}),
     });
     scheduleTicks();
@@ -594,12 +613,19 @@ export const useStore = create<RefrainState>((set, get) => {
       const faded = fadeOutScore(effectiveScore(get().score, get().voiceState));
       await engine.evaluate(faded, true);
       set({ playing: false, transportLive: true });
-      get().log('HUSH — fading over a cycle; clock still turning', 'info');
-      const ms = Math.max(200, 1000 / Math.max(0.05, get().cps));
+      get().log('HUSH — fading to the downbeat; clock still turning', 'info');
+      // `saw` is a per-cycle ramp that hits 0 exactly at the cycle boundary, then
+      // resets to 1. So cut at the NEXT downbeat (not a wall-clock full cycle) to
+      // land on silence with no snap-back. Extend by a cycle if we're already
+      // near the boundary, so the fade isn't imperceptibly short.
+      const cps = Math.max(0.05, get().cps);
+      const phase = engine.started ? (((engine.now() % 1) + 1) % 1) : 0;
+      let remainder = 1 - phase;
+      if (remainder < 0.2) remainder += 1;
       setTimeout(() => {
         // only silence if the user hasn't restarted playback in the meantime
         if (!get().playing) engine.panic();
-      }, ms);
+      }, Math.round((remainder / cps) * 1000));
     },
 
     setCps: (cps) => {
@@ -648,8 +674,10 @@ export const useStore = create<RefrainState>((set, get) => {
           await get().runBreak();
         } else if (intent.id === 'variations') {
           const seed = get().seed;
-          const ls = buildLanes('variations', get().voices.map((v) => v.id), seed);
-          const laneSet: LaneSet = { id: id('ls'), prompt: 'variations', lanes: ls, soloId: null, committedId: null, seed };
+          // forward the real request so the count (`/variations 4`) and drop
+          // keywords reach buildLanes, matching the natural-language path.
+          const ls = buildLanes(intent.prompt, get().voices.map((v) => v.id), seed);
+          const laneSet: LaneSet = { id: id('ls'), prompt: intent.prompt, lanes: ls, soloId: null, committedId: null, seed };
           set((s) => ({ laneSet, messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'lanes', laneSetId: laneSet.id, text: `${ls.length} ways offered — solo each against the mix, commit one. Seed \`${seedHex(seed)}\`.` }] }));
         } else if (intent.id === 'explain') {
           await answerTurn(intent.voiceHint ? `explain $${intent.voiceHint}` : 'explain this line');
@@ -949,7 +977,9 @@ export const useStore = create<RefrainState>((set, get) => {
       if (!ls) return;
       const lane = ls.lanes.find((l) => l.id === laneId);
       if (!lane) return;
-      const newScore = `${get().score}\n\n${lane.code}`;
+      const base = get().score; // pre-lane score — the shared parent of every fork
+      const preParent = get().headId; // parked forks branch off here, as siblings
+      const newScore = `${base}\n\n${lane.code}`;
       const voices = buildVoices(newScore, get().voiceState);
       const prov: Provenance = { source: 'lanes', prompt: ls.prompt, seed: ls.seed, model: llmModelLabel('generation'), when: Date.now(), cycle: nowCycle() };
       set({
@@ -962,11 +992,14 @@ export const useStore = create<RefrainState>((set, get) => {
           { id: id('m'), role: 'maestro', shape: 'answer', text: `Committed lane **${lane.label} · ${lane.name}** as ${`\`${lane.voiceId}\``}. The other forks stay parked in the tree — seed \`${seedHex(ls.seed)}\`.` },
         ],
       });
-      // Commit the chosen fork; the rejected forks become parked stubs off the
-      // same parent — the walkable "2 parked forks" row in the history tree (§07).
-      pushCommit(`${lane.name} · fork ${lane.label}`, prov);
+      // Commit the chosen fork (score = base + this lane). The rejected forks
+      // become parked stubs off the SAME pre-lane parent, each snapshotting its
+      // OWN alternative code so the tree really preserves them (§07).
+      pushCommit(`${lane.name} · fork ${lane.label}`, { ...prov }, { parentId: preParent });
       for (const other of ls.lanes) {
-        if (other.id !== laneId) pushCommit(`parked · ${other.name}`, { ...prov }, { parked: true });
+        if (other.id !== laneId) {
+          pushCommit(`parked · ${other.name}`, { ...prov }, { parked: true, parentId: preParent, score: `${base}\n\n${other.code}` });
+        }
       }
       scheduleTicks();
       if (get().playing) evalCurrent(newScore);
@@ -1097,6 +1130,27 @@ export const useStore = create<RefrainState>((set, get) => {
       get().log(`⑂ forked from “${commit.label}” — the next edit branches`, 'info');
     },
 
+    // Reproduce a commit's generation from its STORED seed (spec §07) — restore
+    // the global seed and, if the commit came from a prompt, re-roll those lanes
+    // identically. Randomness becomes a value you can cite.
+    reproduceCommit: (commitId) => {
+      const commit = get().history.find((c) => c.id === commitId);
+      if (!commit || commit.provenance.seed == null) return;
+      const seed = commit.provenance.seed;
+      set({ seed });
+      const prompt = commit.provenance.prompt;
+      if (prompt) {
+        const lanes = buildLanes(prompt, get().voices.map((v) => v.id), seed);
+        const laneSet: LaneSet = { id: id('ls'), prompt, lanes, soloId: null, committedId: null, seed };
+        set((s) => ({
+          laneSet,
+          surface: null,
+          messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'lanes', laneSetId: laneSet.id, text: `Reproduced from seed \`${seedHex(seed)}\` — the same ${lanes.length} forks, identically.` }],
+        }));
+      }
+      get().log(`reproduced seed ${seedHex(seed)}`, 'info');
+    },
+
     // -------- editor context pins (spec §02) --------
     addPin: (pin) =>
       set((s) => {
@@ -1217,6 +1271,8 @@ export const useStore = create<RefrainState>((set, get) => {
         hunkEnabled: {},
         laneSet: null,
         seed: randomSeed(),
+        pins: [],
+        arcSelection: null,
       });
       scheduleTicks();
       if (get().playing) evalCurrent(DEFAULT_SCORE);
@@ -1240,8 +1296,9 @@ export const useStore = create<RefrainState>((set, get) => {
     },
 
     saveCheckpoint: (name) => {
-      // ⌘S tags a named checkpoint (autosave already persists continuously §08)
-      pushCommit(name?.trim() || `checkpoint · ${new Date().toLocaleTimeString()}`, { source: 'you', when: Date.now(), cycle: nowCycle() });
+      // ⌘S tags a named checkpoint (autosave already persists continuously §08).
+      // force:true so it bookmarks the moment even when the code equals HEAD.
+      pushCommit(name?.trim() || `checkpoint · ${new Date().toLocaleTimeString()}`, { source: 'you', when: Date.now(), cycle: nowCycle() }, { force: true });
       get().log('✓ checkpoint saved', 'success');
     },
 
@@ -1323,10 +1380,13 @@ function observePrompter(
   const cards: PrompterCard[] = [];
   const live = (k: string) => !dismissed.includes(k);
 
-  // static: a pitched/pad voice with no LFO movement and no moving filter
+  // static: a pitched/pad voice with no LFO movement. We key off actual
+  // modulation — a signal being scaled (`.range(`) or perlin/rand — NOT the
+  // signal words themselves, which double as oscillator names (sawtooth/
+  // triangle/square) and would mis-flag every synth voice as "moving".
   if (live('static')) {
     const stat = voices.find(
-      (v) => /note\(|<[^>]*>/.test(v.expr) && !/(sine|saw|perlin|rand|tri|square)/.test(v.expr),
+      (v) => /note\(|<[^>]*>/.test(v.expr) && !/\.range\(|\bperlin\b|\brand\b/.test(v.expr),
     );
     if (stat)
       cards.push({

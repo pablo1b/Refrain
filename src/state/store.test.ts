@@ -474,6 +474,69 @@ describe('prompter (spec §04)', () => {
   });
 });
 
+// Regression coverage for the xhigh code-review findings.
+describe('review fixes', () => {
+  it('commitLane parks each rejected fork with ITS OWN code, off the shared parent', async () => {
+    await state().sendMaestro('give me 3 ways into the drop');
+    const ls = state().laneSet!;
+    const preParent = state().headId;
+    const keep = ls.lanes[0];
+    const others = ls.lanes.slice(1);
+    state().commitLane(keep.id);
+    const parked = state().history.filter((c) => c.parked);
+    expect(parked).toHaveLength(others.length);
+    // each parked commit snapshots its OWN lane's code, not the committed one
+    for (const o of others) {
+      const match = parked.find((c) => c.score.includes(o.code));
+      expect(match).toBeTruthy();
+      expect(match!.score).not.toContain(keep.code); // not a duplicate of the accepted fork
+      expect(match!.parentId).toBe(preParent); // sibling off the pre-lane parent
+    }
+  });
+
+  it('saveCheckpoint forces a commit even when the score equals HEAD', () => {
+    const before = state().history.length;
+    state().saveCheckpoint('my checkpoint');
+    expect(state().history.length).toBe(before + 1);
+    expect(state().history.at(-1)!.label).toBe('my checkpoint');
+  });
+
+  it('/variations forwards the requested count (not a fixed 3)', async () => {
+    await state().sendMaestro('/variations 4');
+    expect(state().laneSet!.lanes).toHaveLength(4);
+  });
+
+  it('a prototype-key slash token (/toString) does not resolve as a command/directive', async () => {
+    await state().sendMaestro('/toString');
+    expect(state().stagedEdit).toBeNull(); // no spurious edit
+    const last = state().messages.at(-1)!;
+    expect(last.role).toBe('maestro'); // gets feedback, not silence
+  });
+
+  it('reproduceCommit restores a committed generation from its stored seed', async () => {
+    await state().sendMaestro('give me 3 ways into the drop');
+    const ls = state().laneSet!;
+    const usedSeed = ls.seed;
+    state().commitLane(ls.lanes[0].id);
+    // change the global seed away from what produced the commit
+    state().reseed('new');
+    const forkCommit = state().history.find((c) => c.provenance.seed === usedSeed && !c.parked)!;
+    state().reproduceCommit(forkCommit.id);
+    expect(state().seed).toBe(usedSeed); // seed restored from provenance, not the current global
+    expect(state().laneSet!.seed).toBe(usedSeed);
+  });
+
+  it('rewinding to a parked fork restores that alternative code', async () => {
+    await state().sendMaestro('give me 3 ways into the drop');
+    const ls = state().laneSet!;
+    const other = ls.lanes[1];
+    state().commitLane(ls.lanes[0].id);
+    const parked = state().history.find((c) => c.parked && c.score.includes(other.code))!;
+    state().rewind(parked.id);
+    expect(state().score).toContain(other.code); // the parked variation is recoverable
+  });
+});
+
 // The flagship multi-step agent (spec §03): /break runs real tools, states a
 // plan, and lands ONE staged, reversible diff.
 describe('agent · /break (spec §03)', () => {

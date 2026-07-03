@@ -45,6 +45,8 @@ export function useMeters(): Meters {
     let lastEmit = 0;
     let cpuEMA = 0;
 
+    let idleEmitted = false; // stop re-rendering the Stage once idle has settled
+
     const silentVoice = (id: string) => {
       const v = voices.find((vv) => vv.id === id);
       return !v || v.muted || (anySolo && !v.solo);
@@ -71,7 +73,10 @@ export function useMeters(): Meters {
           const evs = events[v.id] ?? [];
           for (const e of evs) {
             if (crossed(lastPhase.current, phase, e.begin)) {
-              const lvl = Math.max(0.15, Math.min(1, (e.gain || 1) * 0.8));
+              // a genuinely silent onset (gain 0) must NOT light the meter — only
+              // floor audible onsets to a visible minimum.
+              const g = e.gain;
+              const lvl = g <= 0.001 ? 0 : Math.max(0.15, Math.min(1, g * 0.8));
               target.current[v.id] = Math.max(target.current[v.id], lvl);
             }
           }
@@ -98,13 +103,16 @@ export function useMeters(): Meters {
       const master = running ? Math.min(1, Math.max(peak, Math.sqrt(acc) * 0.6)) : 0;
       const headroomDb = master > 0.0005 ? 20 * Math.log10(master) : -Infinity;
 
-      // emit — throttled harder under reduced-motion (calm, not jittery)
+      // emit — throttled harder under reduced-motion (calm, not jittery). When
+      // the transport is stopped we emit ONE settled (zeroed) frame, then stop
+      // re-rendering the Stage until playback resumes (no idle rAF re-render drain).
       const emitEvery = reduced ? 200 : 40;
-      if (now - lastEmit >= emitEvery) {
+      if (now - lastEmit >= emitEvery && (running || !idleEmitted)) {
         lastEmit = now;
+        idleEmitted = !running;
         const levels: Record<string, number> = {};
         for (const v of voices) levels[v.id] = +(env.current[v.id] ?? 0).toFixed(3);
-        setMeters({ levels, master: +master.toFixed(3), headroomDb, cpu: Math.round(cpuEMA) });
+        setMeters({ levels, master: +master.toFixed(3), headroomDb, cpu: running ? Math.round(cpuEMA) : 0 });
       }
       raf = requestAnimationFrame(loop);
     };

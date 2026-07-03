@@ -36,7 +36,7 @@ export function History() {
   const headId = useStore((s) => s.headId);
   const rewind = useStore((s) => s.rewind);
   const forkFrom = useStore((s) => s.forkFrom);
-  const reseed = useStore((s) => s.reseed);
+  const reproduceCommit = useStore((s) => s.reproduceCommit);
   const [selId, setSel] = useState<string | null>(headId);
 
   // newest first — the walkable line (main line + parked stubs interleaved)
@@ -74,7 +74,7 @@ export function History() {
         {/* provenance card */}
         <div>
           {selected ? (
-            <ProvenanceCard commit={selected} isHead={selected.id === headId} onReproduce={() => reseed('same')} onFork={() => { forkFrom(selected.id); setSel(selected.id); }} onRewind={() => { rewind(selected.id); setSel(selected.id); }} />
+            <ProvenanceCard commit={selected} isHead={selected.id === headId} onReproduce={() => reproduceCommit(selected.id)} onFork={() => { forkFrom(selected.id); setSel(selected.id); }} onRewind={() => { rewind(selected.id); setSel(selected.id); }} />
           ) : (
             <div style={{ ...mono, fontSize: 12, color: 'var(--text-dim)', padding: 20 }}>Select a commit to see its recipe.</div>
           )}

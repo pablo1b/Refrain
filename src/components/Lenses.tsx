@@ -165,18 +165,22 @@ const FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 
 function pitchClasses(exprs: string[]): Set<number> {
   const pcs = new Set<number>();
+  const addTok = (letter: string, acc: string) => {
+    let pc = NOTE_TO_PC[letter.toLowerCase()];
+    if (pc == null) return;
+    if (acc === '#' || acc === 's') pc = (pc + 1) % 12;
+    else if (acc === 'b') pc = (pc + 11) % 12;
+    pcs.add(pc);
+  };
   for (const expr of exprs) {
-    const strs = expr.match(/"[^"]*"/g) ?? [];
-    for (const s of strs) {
-      // note names like c2, eb3, f#4, and chord roots like Cm7, Abmaj7
-      const toks = s.match(/[A-Ga-g][#bs]?/g) ?? [];
-      for (const tok of toks) {
-        let pc = NOTE_TO_PC[tok[0].toLowerCase()];
-        if (pc == null) continue;
-        if (tok[1] === '#' || tok[1] === 's') pc = (pc + 1) % 12;
-        else if (tok[1] === 'b') pc = (pc + 11) % 12;
-        pcs.add(pc);
-      }
+    // Only read the ARGUMENT of note()/n()/chord() — never .s("sawtooth") etc.,
+    // whose sound names would inject phantom pitches (the 'a' in "sawtooth").
+    const args = [...expr.matchAll(/\b(?:note|n|chord)\(\s*"([^"]*)"/g)].map((m) => m[1]);
+    for (const s of args) {
+      // note literals: pitch-letter + accidental + explicit octave digit (c2, eb3, f#4)
+      for (const m of s.matchAll(/(?<![A-Za-z])([a-g])([#bs]?)(-?\d+)/g)) addTok(m[1], m[2]);
+      // chord symbols: a capitalised root at a token boundary (Cm7, Abmaj7)
+      for (const m of s.matchAll(/(?:^|[\s<>[\],|])([A-G])([#b]?)/g)) addTok(m[1], m[2]);
     }
   }
   return pcs;

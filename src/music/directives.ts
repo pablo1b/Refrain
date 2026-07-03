@@ -286,7 +286,7 @@ export function interpret(text: string, voiceIds: string[]): Intent {
       else if (voiceIds.includes(p)) voiceHint = p;
       else if (/^\d+(\.\d+)?$/.test(p)) degree = parseFloat(p);
     }
-    if (COMMAND_BY_ID[token]) return { kind: 'command', id: token, prompt: raw, voiceHint };
+    if (Object.hasOwn(COMMAND_BY_ID, token)) return { kind: 'command', id: token, prompt: raw, voiceHint };
     const id = resolveDirectiveId(parts[0]);
     if (id) return { kind: 'directive', id, voiceHint, degree };
     return { kind: 'unknown', text: raw };
@@ -320,7 +320,7 @@ export function interpret(text: string, voiceIds: string[]): Intent {
 function resolveDirectiveId(token: string): string | null {
   if (!token) return null;
   const tok = token.toLowerCase();
-  if (DIRECTIVE_BY_ID[tok]) return tok;
+  if (Object.hasOwn(DIRECTIVE_BY_ID, tok)) return tok;
   for (const d of DIRECTIVES) {
     if (d.id === tok || d.label.toLowerCase() === tok || d.aliases.includes(tok)) return d.id;
   }

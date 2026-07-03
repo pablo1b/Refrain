@@ -23,6 +23,7 @@ export function Maestro() {
 
   const [input, setInput] = useState('');
   const [hi, setHi] = useState(0);
+  const [reasoningOpen, setReasoningOpen] = useState(true); // one shared fold state (⌥R)
   const taRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +53,15 @@ export function Maestro() {
   }, [messages.length, busy]);
 
   useEffect(() => setHi(0), [query, atQuery]);
+
+  // ⌥R folds every reasoning trace at once — ONE listener, shared state (spec §03)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey && e.key.toLowerCase() === 'r') setReasoningOpen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const pick = (item: PaletteItem) => {
     if (item.kind === 'command') send('/' + item.id);
@@ -96,7 +106,7 @@ export function Maestro() {
 
       <div ref={scrollRef} style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
         {messages.map((m) => (
-          <MessageView key={m.id} m={m} />
+          <MessageView key={m.id} m={m} reasoningOpen={reasoningOpen} onToggleReasoning={() => setReasoningOpen((v) => !v)} />
         ))}
         {busy && (
           <div style={{ ...mono, fontSize: 11, color: 'var(--maestro)', display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -182,7 +192,7 @@ function MentionPicker({ opts, hi, onPick }: { opts: MentionOpt[]; hi: number; o
 }
 
 // ---- messages ----
-function MessageView({ m }: { m: MaestroMessage }) {
+function MessageView({ m, reasoningOpen, onToggleReasoning }: { m: MaestroMessage; reasoningOpen: boolean; onToggleReasoning: () => void }) {
   if (m.role === 'user') {
     return (
       <div style={{ alignSelf: 'flex-end', maxWidth: '88%', background: 'var(--user-bubble)', borderRadius: '9px 9px 2px 9px', padding: '9px 12px', fontSize: 12.5, lineHeight: 1.5, color: 'var(--text)' }}>
@@ -193,7 +203,7 @@ function MessageView({ m }: { m: MaestroMessage }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-      {m.reasoning && <Reasoning text={m.reasoning} />}
+      {m.reasoning && <Reasoning text={m.reasoning} open={reasoningOpen} onToggle={onToggleReasoning} />}
       {m.plan && m.plan.length > 0 && <PlanView plan={m.plan} />}
       {m.toolLog && m.toolLog.length > 0 && <ToolLog log={m.toolLog} />}
       <div
@@ -216,18 +226,10 @@ function MessageView({ m }: { m: MaestroMessage }) {
   );
 }
 
-function Reasoning({ text }: { text: string }) {
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && e.key.toLowerCase() === 'r') setOpen((v) => !v);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+function Reasoning({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
   return (
     <div style={{ border: '1px solid var(--line-3)', borderRadius: 9, overflow: 'hidden', background: 'var(--bg-deep)' }}>
-      <button onClick={() => setOpen((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', ...mono, fontSize: 10.5, color: 'var(--text-2)', borderBottom: open ? '1px solid var(--line-3)' : 'none' }}>
+      <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', ...mono, fontSize: 10.5, color: 'var(--text-2)', borderBottom: open ? '1px solid var(--line-3)' : 'none' }}>
         <span style={{ color: 'var(--maestro)' }}>{open ? '▾' : '▸'}</span> reasoning
         <span style={{ marginLeft: 'auto', color: 'var(--text-dim)' }}>fold ⌥R</span>
       </button>
