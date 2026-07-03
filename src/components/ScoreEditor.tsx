@@ -9,12 +9,55 @@ import {
   type DecorationSet,
   WidgetType,
 } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { autocompletion, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { javascript } from '@codemirror/lang-javascript';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { parseScore } from '../music/parseScore';
 import { useStore } from '../state/store';
+
+// ---- grounded completion vocabulary (spec §02) ----
+// Every name here is a REAL Strudel method/function (verified against the
+// strudel-patterns skill) — completion is grounded in the live API, your named
+// voices and note literals, not a guessed token stream.
+const STRUDEL_METHODS = [
+  'gain', 'pan', 'lpf', 'hpf', 'lpq', 'hpq', 'bpf', 'vowel', 'room', 'roomsize', 'delay', 'delaytime', 'delayfeedback',
+  'distort', 'crush', 'coarse', 'speed', 'begin', 'end', 'chop', 'striate', 'slice', 'loopAt', 'bank', 'clip', 'legato',
+  'attack', 'decay', 'sustain', 'release', 'adsr', 'fm', 'fmh', 'vib', 'note', 'n', 's', 'sound', 'freq',
+  'scale', 'transpose', 'scaleTranspose', 'add', 'arp', 'chord', 'voicing', 'rootNotes',
+  'fast', 'slow', 'hurry', 'rev', 'palindrome', 'iter', 'iterBack', 'ply', 'segment', 'struct', 'mask', 'euclid', 'euclidRot',
+  'swingBy', 'swing', 'every', 'firstOf', 'lastOf', 'when', 'within', 'chunk', 'off', 'superimpose', 'layer', 'jux', 'juxBy',
+  'echo', 'degradeBy', 'degrade', 'sometimesBy', 'sometimes', 'often', 'rarely', 'someCyclesBy', 'late', 'early',
+  'range', 'range2', 'rangex', 'div', 'mul', 'sub',
+];
+const STRUDEL_FUNCS = ['s', 'n', 'note', 'sound', 'freq', 'stack', 'cat', 'seq', 'silence', 'run', 'setcps', 'setcpm'];
+const STRUDEL_SIGNALS = ['sine', 'cosine', 'saw', 'isaw', 'tri', 'square', 'perlin', 'rand', 'irand', 'choose', 'chooseCycles'];
+
+function strudelCompletions(context: CompletionContext): CompletionResult | null {
+  const word = context.matchBefore(/[\w$]*/);
+  if (!word) return null;
+  const before = context.state.sliceDoc(Math.max(0, word.from - 1), word.from);
+  const isMethod = before === '.';
+  if (word.from === word.to && !context.explicit && !isMethod) return null;
+  if (isMethod) {
+    return {
+      from: word.from,
+      options: STRUDEL_METHODS.map((m) => ({ label: m, type: 'method', detail: '(…)', boost: 1 })),
+      validFor: /[\w]*/,
+    };
+  }
+  const sigils = parseScore(context.state.doc.toString()).voices.map((v) => v.sigil);
+  return {
+    from: word.from,
+    options: [
+      ...sigils.map((sg) => ({ label: sg, type: 'variable', detail: 'voice' })),
+      ...STRUDEL_FUNCS.map((f) => ({ label: f, type: 'function' })),
+      ...STRUDEL_SIGNALS.map((s) => ({ label: s, type: 'constant', detail: 'signal' })),
+    ],
+    validFor: /[\w$]*/,
+  };
+}
 
 // ---- syntax colours mapped to the themed CSS vars (cool code palette) ----
 const refrainHighlight = HighlightStyle.define([
@@ -56,6 +99,20 @@ function selectVoiceUnderCaret(view: EditorView) {
   const v = voices.find((vv) => lineNo >= vv.startLine && lineNo <= vv.endLine);
   if (v) useStore.getState().selectVoice(v.id);
   window.dispatchEvent(new CustomEvent('refrain:focus-maestro'));
+}
+
+/** Pin the voice block under a gutter line-number click as Maestro context (§02). */
+function pinLineAt(view: EditorView, pos: number) {
+  const lineNo = view.state.doc.lineAt(pos).number - 1; // 0-based
+  const { voices } = parseScore(view.state.doc.toString());
+  const v = voices.find((vv) => lineNo >= vv.startLine && lineNo <= vv.endLine);
+  const store = useStore.getState();
+  if (v) {
+    store.selectVoice(v.id);
+    store.addPin({ voiceId: v.id, startLine: v.startLine + 1, endLine: v.endLine + 1 });
+  } else {
+    store.addPin({ startLine: lineNo + 1, endLine: lineNo + 1 });
+  }
 }
 
 // ---- dynamic decorations: active voice block + sigils + play marker ----
@@ -138,11 +195,21 @@ export function ScoreEditor() {
     const state = EditorState.create({
       doc: useStore.getState().score,
       extensions: [
-        lineNumbers(),
+        lineNumbers({
+          domEventHandlers: {
+            // click a line number to pin its voice range as context (spec §02)
+            mousedown: (view, block, event) => {
+              (event as MouseEvent).preventDefault();
+              pinLineAt(view, block.from);
+              return true;
+            },
+          },
+        }),
         history(),
         highlightActiveLine(),
         javascript(),
         syntaxHighlighting(refrainHighlight),
+        autocompletion({ override: [strudelCompletions], activateOnTyping: true, icons: false }),
         themeCompartment.of(makeEditorTheme(useStore.getState().theme === 'dark')),
         metaField,
         decoField,
@@ -161,6 +228,8 @@ export function ScoreEditor() {
               return true;
             },
           },
+          ...completionKeymap,
+          indentWithTab,
           ...defaultKeymap,
           ...historyKeymap,
         ]),
@@ -212,28 +281,53 @@ export function ScoreEditor() {
   }, [theme]);
 
   return (
-    <div style={{ position: 'relative', height: '100%', minWidth: 0, background: 'var(--bg)', overflow: 'hidden' }}>
-      <div ref={ref} style={{ height: '100%' }} onDoubleClick={() => play()} />
-      <button
-        onClick={() => (viewRef.current ? selectVoiceUnderCaret(viewRef.current) : window.dispatchEvent(new CustomEvent('refrain:focus-maestro')))}
-        style={{
-          position: 'absolute',
-          left: 44,
-          bottom: 14,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          background: 'var(--elev)',
-          border: '1px solid var(--line-5)',
-          borderRadius: 7,
-          padding: '6px 11px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 11,
-          color: 'var(--text-2)',
-        }}
-      >
-        <span style={{ color: 'var(--maestro)' }}>⌘K</span> ask the Maestro inline
-      </button>
+    <div style={{ position: 'relative', height: '100%', minWidth: 0, background: 'var(--bg)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div ref={ref} style={{ flex: 1, minHeight: 0 }} onDoubleClick={() => play()} />
+      <ContextBar onAsk={() => (viewRef.current ? selectVoiceUnderCaret(viewRef.current) : window.dispatchEvent(new CustomEvent('refrain:focus-maestro')))} />
+    </div>
+  );
+}
+
+// The Maestro context bar (spec §02): three states, never ambiguous.
+// nothing pinned = whole file · gutter pins = explicit ranges (blue chips) ·
+// an arc = a scoped span. Esc clears everything back to whole-file.
+function ContextBar({ onAsk }: { onAsk: () => void }) {
+  const pins = useStore((s) => s.pins);
+  const arc = useStore((s) => s.arcSelection);
+  const removePin = useStore((s) => s.removePin);
+  const clearPins = useStore((s) => s.clearPins);
+  const setArc = useStore((s) => s.setArcSelection);
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
+  const nothing = pins.length === 0 && !arc;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderTop: '1px solid var(--line-3)', background: 'var(--bg-deep)', flexWrap: 'wrap', minHeight: 40 }}>
+      <span style={{ ...mono, fontSize: 9.5, letterSpacing: '.14em', color: 'var(--text-dim)' }}>MAESTRO CONTEXT</span>
+      {nothing && <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-3)' }}>whole file · click a line № to pin</span>}
+      {pins.map((p) => (
+        <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, ...mono, fontSize: 10.5, color: 'var(--select)', background: 'color-mix(in srgb, var(--select) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--select) 40%, transparent)', borderRadius: 6, padding: '3px 8px' }}>
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: 'var(--select)' }} />
+          {p.voiceId ? `$${p.voiceId}` : 'line'} · L{p.startLine}{p.endLine !== p.startLine ? `–${p.endLine}` : ''}
+          <button onClick={() => removePin(p.id)} style={{ color: 'var(--select)', opacity: 0.7 }}>✕</button>
+        </span>
+      ))}
+      {arc && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, ...mono, fontSize: 10.5, color: 'var(--live)', background: 'color-mix(in srgb, var(--live) 14%, transparent)', border: '1px solid color-mix(in srgb, var(--live) 40%, transparent)', borderRadius: 6, padding: '3px 8px' }}>
+          ◷ arc span
+          <button onClick={() => setArc(null)} style={{ color: 'var(--live)', opacity: 0.8 }}>✕</button>
+        </span>
+      )}
+      {!nothing && <span style={{ ...mono, fontSize: 10, color: 'var(--text-2)' }}>{pins.length ? `${pins.length} pinned` : ''}</span>}
+      <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        {!nothing && (
+          <button onClick={() => { clearPins(); setArc(null); }} style={{ ...mono, fontSize: 10.5, color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 6, padding: '4px 9px' }}>
+            ⊘ clear · <span style={{ color: 'var(--maestro)' }}>Esc</span>
+          </button>
+        )}
+        <button onClick={onAsk} style={{ ...mono, fontSize: 10.5, color: 'var(--text-2)', border: '1px solid var(--line-5)', borderRadius: 6, padding: '4px 9px' }}>
+          <span style={{ color: 'var(--maestro)' }}>⌘K</span> ask inline
+        </button>
+      </span>
     </div>
   );
 }

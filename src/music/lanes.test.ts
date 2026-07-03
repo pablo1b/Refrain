@@ -50,18 +50,37 @@ describe('buildLanes', () => {
     expect(lanes.map((l) => l.shape)).toEqual(['rise', 'roll', 'flat']);
   });
 
-  it('prefixes each lane.code with $<voiceId>: and the template expression', () => {
-    const lanes = buildLanes(GEN_PROMPT, []);
+  it('prefixes each lane.code with $<voiceId>: and the seed-0 template expression', () => {
+    // seed 0: template order unchanged; lane i takes variant (0+i)%3.
+    const lanes = buildLanes(GEN_PROMPT, [], 0);
     expect(lanes[0].code).toBe('$arp: note("c4 eb4 g4 bb4").s("triangle").fast(2).gain(0.45)');
-    expect(lanes[1].code).toBe('$pls: note("c2*4").s("sawtooth").lpf(700).gain(0.55)');
+    expect(lanes[1].code).toBe('$pls: note("c2*4").s("sawtooth").lpf(1000).gain(0.55)');
     expect(lanes[2].code).toBe('$tex: s("hh*16").gain(perlin.range(0.08, 0.4)).pan(sine.range(0.2, 0.8))');
   });
 
-  it('renders the deterministic drop expressions with variant 0', () => {
-    const lanes = buildLanes(DROP_PROMPT, []);
+  it('renders the deterministic drop expressions at seed 0', () => {
+    const lanes = buildLanes(DROP_PROMPT, [], 0);
     expect(lanes[0].code).toBe('$fx: s("white").lpf(sine.range(200, 6000).slow(2)).gain(0.45)');
-    expect(lanes[1].code).toBe('$rl: s("sd*[8 12]").gain(saw.range(0.35, 1)).bank("RolandTR909")');
+    expect(lanes[1].code).toBe('$rl: s("sd*[8 16]").gain(saw.range(0.35, 1)).bank("RolandTR909")');
     expect(lanes[2].code).toBe('$gp: s("~@3 crash").gain(0.9)');
+  });
+
+  it('is reproducible: the same seed yields identical fork code', () => {
+    const a = buildLanes(DROP_PROMPT, [], 0x4f2a);
+    const b = buildLanes(DROP_PROMPT, [], 0x4f2a);
+    expect(a.map((l) => l.code)).toEqual(b.map((l) => l.code));
+  });
+
+  it('a different seed rotates the template set (wanders)', () => {
+    const a = buildLanes(DROP_PROMPT, [], 0);
+    const b = buildLanes(DROP_PROMPT, [], 1); // offset 1 → different first template
+    expect(a[0].name).not.toBe(b[0].name);
+  });
+
+  it('follows the requested count (2–4) from the prompt', () => {
+    expect(buildLanes('give me two ideas', [])).toHaveLength(2);
+    expect(buildLanes('4 ways into the drop', [])).toHaveLength(4);
+    expect(buildLanes('some variations', [])).toHaveLength(3); // default
   });
 
   it('starts every lane.code with its own $<voiceId>: sigil', () => {
@@ -87,12 +106,12 @@ describe('buildLanes', () => {
     expect(ids).toEqual(['fx1', 'rl1', 'gp1']);
   });
 
-  it('reroll=true still yields three well-formed lanes', () => {
-    const lanes = buildLanes(DROP_PROMPT, [], true);
+  it('a fresh seed still yields well-formed, uniquely-named lanes', () => {
+    const lanes = buildLanes(DROP_PROMPT, [], 7);
     expect(lanes).toHaveLength(3);
     expect(lanes.map((l) => l.label)).toEqual(['A', 'B', 'C']);
     for (const l of lanes) {
-      // shape/content only — reroll changes the variant, so codes differ.
+      // shape/content only — a new seed changes the variant, so codes differ.
       expect(l.code.startsWith(`$${l.voiceId}: `)).toBe(true);
       expect(l.name).toBeTruthy();
       expect(l.voiceId).toBeTruthy();

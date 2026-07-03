@@ -5,7 +5,7 @@
 // auditioned and panicked safely.
 // ---------------------------------------------------------------------------
 
-import { SAMPLE_PACKS } from '../theme/tokens';
+import { SAMPLE_PACKS, SAMPLE_JSON } from '../theme/tokens';
 
 type Repl = {
   scheduler: {
@@ -23,9 +23,18 @@ type Repl = {
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/** One scheduled onset within a cycle: begin/dur in cycles (0..1), relative gain. */
+export interface EngineEvent {
+  begin: number;
+  dur: number;
+  gain: number;
+}
+
 class StrudelEngine {
   private repl: Repl | null = null;
   private transpile: ((code: string) => Promise<{ pattern: any }>) | null = null;
+  private web: any = null;
+  private analyser: AnalyserNode | null = null;
   status: EngineStatus = 'idle';
   error: string | null = null;
   private initPromise: Promise<boolean> | null = null;
@@ -49,6 +58,9 @@ class StrudelEngine {
         this.set('loading');
         const web = await import('@strudel/web');
         const { initStrudel, samples, registerSynthSounds, aliasBank } = web as any;
+        // Keep the module around for the master analyser (getAudioContext /
+        // superdough analyser helpers) — see getAnalyser().
+        this.web = web as any;
 
         const repl = await initStrudel({
           prebake: async () => {
@@ -57,12 +69,7 @@ class StrudelEngine {
             try {
               await Promise.all([
                 registerSynthSounds?.(),
-                samples(`${ds}tidal-drum-machines.json`),
-                samples(`${ds}piano.json`),
-                samples(`${ds}Dirt-Samples.json`),
-                samples(`${ds}EmuSP12.json`),
-                samples(`${ds}vcsl.json`),
-                samples(`${ds}mridangam.json`),
+                ...SAMPLE_JSON.map((f) => samples(`${ds}${f}`)),
               ]);
               aliasBank?.(`${ts}tidal-drum-machines-alias.json`);
             } catch (e) {
@@ -113,7 +120,16 @@ class StrudelEngine {
   async evaluate(code: string, autoplay = true): Promise<{ ok: boolean; error?: string }> {
     if (!this.repl) return { ok: false, error: 'engine not ready' };
     try {
+      // repl.evaluate SWALLOWS transpile/eval errors — it logs, sets
+      // repl.state.error and resolves undefined (never rejects). So the try/catch
+      // only catches synchronous throws; we must also inspect state.error after
+      // the await to surface bad-code feedback (skill: strudel-engine).
+      const before = this.repl.state?.error;
       await this.repl.evaluate(code, autoplay);
+      const err = this.repl.state?.error;
+      if (err && err !== before) {
+        return { ok: false, error: this.cleanError((err as any)?.message ?? String(err)) };
+      }
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: this.cleanError(e?.message ?? String(e)) };
@@ -163,11 +179,39 @@ class StrudelEngine {
   }
 
   /**
-   * Query one cycle of a voice expression → event begin offsets in [0,1).
-   * Used to lay ticks on the Cycle clock rings. Best-effort: a broken voice
-   * just yields no ticks (it never reaches the speakers either).
+   * A master AnalyserNode for real RMS + FFT (the Meters + Spectrum lenses,
+   * spec §05). Best-effort: superdough exposes a master analyser via
+   * `getAnalyser(id)` — we look it up on the @strudel/web module. If the audio
+   * graph exposes no tap, returns null and the meters fall back to the honest
+   * event-driven envelopes. Cached once obtained.
    */
-  async queryTicks(expr: string): Promise<number[]> {
+  getAnalyser(): AnalyserNode | null {
+    if (this.analyser) return this.analyser;
+    const w = this.web;
+    if (!w) return null;
+    try {
+      const getA = w.getAnalyser ?? w.getAnalyserById;
+      if (typeof getA === 'function') {
+        const a = getA(1) as AnalyserNode;
+        if (a && typeof a.getByteTimeDomainData === 'function') {
+          this.analyser = a;
+          return a;
+        }
+      }
+    } catch {
+      /* no tap available — fall back to envelopes */
+    }
+    return null;
+  }
+
+  /**
+   * Query one cycle of a voice expression → events with begin offset in [0,1),
+   * duration (in cycles) and relative gain. Feeds the Cycle clock rings, the
+   * Tracker lens (begin+dur → a bar) and the honest event-driven meters (onset
+   * envelopes). Best-effort: a broken voice just yields no events (it never
+   * reaches the speakers either).
+   */
+  async queryEvents(expr: string): Promise<EngineEvent[]> {
     if (!this.transpile || !expr.trim()) return [];
     try {
       const { pattern } = await this.transpile(expr);
@@ -176,19 +220,30 @@ class StrudelEngine {
       // a late copy spilling past 1.0 (stretto) aren't lost, then fold each
       // begin back into [0,1) so it lands on the correct ring angle.
       const haps = pattern.queryArc(-0.0625, 1) as any[];
-      const begins: number[] = haps
-        .filter((h: any) => h?.whole && (h.hasOnset?.() ?? true))
-        .map((h: any) => {
-          const b = h.whole.begin;
-          return typeof b?.valueOf === 'function' ? Number(b.valueOf()) : Number(b);
-        })
-        .filter((n: number) => !Number.isNaN(n))
-        .map((n: number) => +(((n % 1) + 1) % 1).toFixed(4));
-      const uniq: number[] = Array.from(new Set<number>(begins));
-      return uniq.sort((a, b) => a - b);
+      const num = (x: any) => (typeof x?.valueOf === 'function' ? Number(x.valueOf()) : Number(x));
+      const events: EngineEvent[] = [];
+      const seen = new Set<number>();
+      for (const h of haps) {
+        if (!h?.whole || !(h.hasOnset?.() ?? true)) continue;
+        const raw = num(h.whole.begin);
+        if (Number.isNaN(raw)) continue;
+        const begin = +(((raw % 1) + 1) % 1).toFixed(4);
+        if (seen.has(begin)) continue;
+        seen.add(begin);
+        const end = num(h.whole.end);
+        const dur = Number.isNaN(end) ? 0 : Math.max(0, +(end - raw).toFixed(4));
+        const g = h.value && typeof h.value === 'object' ? Number(h.value.gain) : NaN;
+        events.push({ begin, dur, gain: Number.isNaN(g) ? 1 : g });
+      }
+      return events.sort((a, b) => a.begin - b.begin);
     } catch {
       return [];
     }
+  }
+
+  /** Back-compat: just the onset offsets (the Cycle clock's ring ticks). */
+  async queryTicks(expr: string): Promise<number[]> {
+    return (await this.queryEvents(expr)).map((e) => e.begin);
   }
 
   private cleanError(msg: string): string {

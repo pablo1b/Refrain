@@ -5,10 +5,13 @@ import { Logo } from './Logo';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 
-/** Live cycle counter — reads the scheduler each frame, re-renders only on tick. */
+/** Live cycle counter — reads the scheduler each frame, re-renders only on tick.
+ *  Keyed to the running transport (engine.started), NOT the `playing` flag, so it
+ *  keeps counting through PANIC/HUSH — the clock stays honest (FIX §10). */
 function LiveCycle() {
   const [cycle, setCycle] = useState(0);
   const playing = useStore((s) => s.playing);
+  const transportLive = useStore((s) => s.transportLive);
   useEffect(() => {
     let raf = 0;
     const loop = () => {
@@ -18,9 +21,10 @@ function LiveCycle() {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+  const live = playing || transportLive;
   return (
-    <span style={{ ...mono, fontSize: 12, color: playing ? 'var(--live)' : 'var(--text-2)' }}>
-      cycle {playing ? cycle : '—'}
+    <span style={{ ...mono, fontSize: 12, color: playing ? 'var(--live)' : transportLive ? 'var(--maestro)' : 'var(--text-2)' }}>
+      cycle {live ? cycle : '—'}
     </span>
   );
 }
@@ -80,7 +84,7 @@ export function Titlebar() {
           padding: '5px 12px',
         }}
       >
-        <button onClick={togglePlay} title={playing ? 'stop (space)' : 'play (space)'} aria-label="play/stop" style={{ display: 'flex', alignItems: 'center', padding: 0 }}>
+        <button onClick={togglePlay} title={playing ? 'stop (F5)' : 'play (F5)'} aria-label="play/stop" style={{ display: 'flex', alignItems: 'center', padding: 0 }}>
           {playing ? (
             <span style={{ display: 'flex', gap: 2 }}>
               <span style={{ width: 3, height: 12, background: 'var(--live)' }} />

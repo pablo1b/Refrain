@@ -12,6 +12,10 @@ import { Arrangement } from './components/Arrangement';
 import { PatchDesigner } from './components/PatchDesigner';
 import { SampleFoundry } from './components/SampleFoundry';
 import { NotationBridge } from './components/NotationBridge';
+import { History } from './components/History';
+import { DirectiveForge } from './components/DirectiveForge';
+import { Projects } from './components/Projects';
+import { Prompter } from './components/Prompter';
 import { AudioGate } from './components/AudioGate';
 
 function isEditable(el: EventTarget | null): boolean {
@@ -33,6 +37,8 @@ export default function App() {
   // keep the <html data-theme> attribute in sync with the store
   useEffect(() => {
     setTheme(theme);
+    // open the last project from local storage (spec §08)
+    useStore.getState().hydrateFromStorage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -54,29 +60,67 @@ export default function App() {
     };
   }, [initAudio]);
 
-  // global keyboard — keyboard-first (spec §10)
+  // global keyboard — a keymap with no collisions (spec §02/§10). Space belongs
+  // to the cursor now; the transport moved to F5. Every binding below is a play
+  // key by IDE convention and can't be typed by accident.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useStore.getState();
       const editable = isEditable(e.target);
 
-      // panic always available
+      // F5 — play/pause the transport (works even while typing)
+      if (e.key === 'F5') {
+        e.preventDefault();
+        s.togglePlay();
+        return;
+      }
+      // ⌘. / ⌃. — PANIC, always available
       if ((e.metaKey || e.ctrlKey) && e.key === '.') {
         e.preventDefault();
         s.panic();
         return;
       }
+      // ⌘K — ask the Maestro inline (the editor handles selection-scoped ⌘K;
+      // this is the fallback when focus is elsewhere)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('refrain:focus-maestro'));
         return;
       }
+      // ⌘P — command palette (opens the Maestro's slash palette)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('refrain:command-palette'));
+        return;
+      }
+      // ⌘O — open the project switcher (spec §08)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        openSurface('projects');
+        return;
+      }
+      // ⌘S — tag a named checkpoint (autosave is continuous · spec §08)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        s.saveCheckpoint();
+        return;
+      }
+      // ⌥Z — rewind one commit (walk history back). Alt avoids the editor's ⌘Z.
+      if (e.altKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        const head = s.history.find((c) => c.id === s.headId);
+        if (head?.parentId) s.rewind(head.parentId);
+        return;
+      }
+      // ⌥. — quiet / un-quiet the Prompter
+      if (e.altKey && e.key === '.') {
+        e.preventDefault();
+        s.togglePrompter();
+        return;
+      }
       if (editable) return;
 
-      if (e.key === ' ') {
-        e.preventDefault();
-        s.togglePlay();
-      } else if (s.stagedEdit && (e.key === 'Enter')) {
+      if (s.stagedEdit && e.key === 'Enter') {
         e.preventDefault();
         s.acceptEdit();
       } else if (s.stagedEdit && (e.key === 'Backspace' || e.key === 'Escape')) {
@@ -84,6 +128,10 @@ export default function App() {
         s.rejectEdit();
       } else if (e.key === 'Escape' && s.surface) {
         openSurface(null);
+      } else if (e.key === 'Escape' && (s.pins.length || s.arcSelection)) {
+        // Esc returns to whole-file context: clear all pins and any arc scope
+        s.clearPins();
+        s.setArcSelection(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -99,9 +147,12 @@ export default function App() {
       <Titlebar />
       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '188px minmax(0,1fr) 312px', gridTemplateRows: 'minmax(0, 1fr)', minHeight: 0, overflow: 'hidden' }}>
         <Shelf />
-        <div style={{ position: 'relative', minWidth: 0, overflow: 'hidden' }}>
-          <ScoreEditor />
-          {stagedEdit && <DiffView />}
+        <div style={{ position: 'relative', minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+            <ScoreEditor />
+            {stagedEdit && <DiffView />}
+          </div>
+          <Prompter />
         </div>
         <Maestro />
       </div>
@@ -113,6 +164,9 @@ export default function App() {
       {surface === 'patch' && <PatchDesigner />}
       {surface === 'foundry' && <SampleFoundry />}
       {surface === 'notation' && <NotationBridge />}
+      {surface === 'history' && <History />}
+      {surface === 'directives' && <DirectiveForge />}
+      {surface === 'projects' && <Projects />}
     </div>
   );
 }

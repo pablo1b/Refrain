@@ -49,6 +49,32 @@ export function strengthFor(provider: Provider['id'], model: string): RoleRoute[
   return /haiku|mini|flash|small|phi/i.test(model) ? 'fast' : 'strong';
 }
 
+/**
+ * Cost (filled squares 0..3) + latency for a model — routing made legible
+ * (spec §09). The right choice depends on how often a role fires: completions
+ * run every keystroke, theory runs once in a while. Spend accordingly.
+ */
+export function modelBadge(model: string): { cost: number; latency: string } {
+  if (/opus/i.test(model)) return { cost: 3, latency: '~900ms' };
+  if (/sonnet/i.test(model)) return { cost: 3, latency: '~700ms' };
+  if (/haiku/i.test(model)) return { cost: 1, latency: '~140ms' };
+  if (/flash-lite/i.test(model)) return { cost: 1, latency: '~80ms' };
+  if (/flash/i.test(model)) return { cost: 1, latency: '~90ms' };
+  if (/mini/i.test(model)) return { cost: 2, latency: '~220ms' };
+  if (/gpt-4o|o3/i.test(model)) return { cost: 3, latency: '~600ms' };
+  if (/llama|mistral|qwen|phi/i.test(model)) return { cost: 0, latency: 'varies' };
+  return { cost: 2, latency: '~300ms' };
+}
+
+/** Plain-language recommendation per role — because the right answer depends
+ *  entirely on how often the role fires (spec §09). */
+export const ROLE_RECOMMENDATION: Record<RoleRoute['id'], { note: string; spend: boolean }> = {
+  directives: { note: 'fast & cheap — bounded transforms, fires on every turn', spend: false },
+  generation: { note: 'strong — judgement pays off for new material', spend: true },
+  theory: { note: 'strong + reasoning — rare, worth it', spend: true },
+  offline: { note: 'private — the network is gone', spend: false },
+};
+
 const LS_KEY = 'refrain.providers';
 const LS_ROLES = 'refrain.roles';
 

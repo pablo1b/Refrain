@@ -1,4 +1,4 @@
-import { useStore } from '../state/store';
+import { useStore, seedHex } from '../state/store';
 import { highlightStrudel } from './Code';
 import type { Lane, LaneShape } from '../types';
 
@@ -51,6 +51,8 @@ export function VariationLanes({ laneSetId }: { laneSetId: string }) {
   const soloLane = useStore((s) => s.soloLane);
   const commitLane = useStore((s) => s.commitLane);
   const reroll = useStore((s) => s.rerollLanes);
+  const refineLane = useStore((s) => s.refineLane);
+  const reseed = useStore((s) => s.reseed);
   if (!laneSet || laneSet.id !== laneSetId) {
     return <div style={{ ...mono, fontSize: 11, color: 'var(--text-dim)' }}>— forks parked in the tree —</div>;
   }
@@ -66,20 +68,26 @@ export function VariationLanes({ laneSetId }: { laneSetId: string }) {
             committed={laneSet.committedId === lane.id}
             onSolo={() => soloLane(laneSet.soloId === lane.id ? null : lane.id)}
             onCommit={() => commitLane(lane.id)}
+            onRefine={() => refineLane(lane.id)}
           />
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...mono, fontSize: 10.5, color: 'var(--text-dim)' }}>
-        <span>⌥ tree · {laneSet.lanes.length} forks · parked until committed</span>
-        <button onClick={reroll} style={{ marginLeft: 'auto', color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 5, padding: '4px 9px' }}>
-          re-roll ↻
-        </button>
+      {/* seed footer — reproducible generation (spec §07) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, ...mono, fontSize: 10, color: 'var(--text-dim)' }}>
+        <span>seed <span style={{ color: 'var(--live)' }}>{seedHex(laneSet.seed)}</span></span>
+        <button onClick={() => reseed('same')} title="reproduce this exactly" style={seedBtn}>↻ same</button>
+        <button onClick={() => reseed('nudge')} title="wander one step" style={seedBtn}>+1</button>
+        <button onClick={() => reseed('new')} title="roll fresh" style={seedBtn}>⚂ new</button>
+        <button onClick={reroll} style={{ ...seedBtn, marginLeft: 'auto' }}>re-roll ↻</button>
       </div>
+      <div style={{ ...mono, fontSize: 10, color: 'var(--text-dim)' }}>⌥ tree · {laneSet.lanes.length} forks · parked until committed</div>
     </div>
   );
 }
 
-function LaneCard({ lane, soloing, committed, onSolo, onCommit }: { lane: Lane; soloing: boolean; committed: boolean; onSolo: () => void; onCommit: () => void }) {
+const seedBtn: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 4, padding: '3px 7px' };
+
+function LaneCard({ lane, soloing, committed, onSolo, onCommit, onRefine }: { lane: Lane; soloing: boolean; committed: boolean; onSolo: () => void; onCommit: () => void; onRefine: () => void }) {
   const accent = soloing ? 'var(--live)' : 'var(--voice-pad)';
   return (
     <div
@@ -109,6 +117,11 @@ function LaneCard({ lane, soloing, committed, onSolo, onCommit }: { lane: Lane; 
         >
           {committed ? '✓ committed' : 'commit'}
         </button>
+        {!committed && (
+          <button onClick={onRefine} title="refine this fork (nudge its seed)" style={{ ...mono, fontSize: 10, color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 5, padding: '5px 10px' }}>
+            ↻ refine
+          </button>
+        )}
       </div>
     </div>
   );

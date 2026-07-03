@@ -30,19 +30,18 @@ export function PerformanceMode() {
   const scenes = useStore((s) => s.scenes);
   const activeSceneId = useStore((s) => s.activeSceneId);
   const cps = useStore((s) => s.cps);
-  const playing = useStore((s) => s.playing);
   const setMode = useStore((s) => s.setMode);
   const launch = useStore((s) => s.launchScene);
   const snapshot = useStore((s) => s.snapshotScene);
   const panic = useStore((s) => s.panic);
   const hush = useStore((s) => s.hush);
   const anySolo = voices.some((v) => v.solo);
-  const levels = useMeters(voices.map((v) => v.id), playing);
+  const { levels } = useMeters();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMode('studio');
-      if (e.key === ' ') {
+      if (e.key === 'F5') {
         e.preventDefault();
         useStore.getState().togglePlay();
       }

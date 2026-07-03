@@ -32,6 +32,8 @@ export interface FakeEngine {
   setCps: ReturnType<typeof vi.fn>;
   now: ReturnType<typeof vi.fn>;
   queryTicks: ReturnType<typeof vi.fn>;
+  queryEvents: ReturnType<typeof vi.fn>;
+  getAnalyser: ReturnType<typeof vi.fn>;
   /** Restore pristine state + default spy behaviour. Call in beforeEach. */
   __reset: () => void;
 }
@@ -51,6 +53,8 @@ export function createFakeEngine(): FakeEngine {
     setCps: vi.fn(),
     now: vi.fn(),
     queryTicks: vi.fn(),
+    queryEvents: vi.fn(),
+    getAnalyser: vi.fn(),
     __reset: () => {},
   } as FakeEngine;
 
@@ -73,6 +77,8 @@ export function createFakeEngine(): FakeEngine {
     });
     e.now.mockReturnValue(0);
     e.queryTicks.mockResolvedValue([]);
+    e.queryEvents.mockResolvedValue([]);
+    e.getAnalyser.mockReturnValue(null);
   }
   applyDefaults();
 
@@ -90,6 +96,8 @@ export function createFakeEngine(): FakeEngine {
     e.setCps.mockReset();
     e.now.mockReset();
     e.queryTicks.mockReset();
+    e.queryEvents.mockReset();
+    e.getAnalyser.mockReset();
     applyDefaults();
   };
 

@@ -38,18 +38,25 @@ describe('transport', () => {
     expect(state().playing).toBe(true);
   });
 
-  it('stop() halts the engine and clears playing', async () => {
+  it('play() marks the transport live (the clock runs)', async () => {
+    await state().play();
+    expect(state().transportLive).toBe(true);
+  });
+
+  it('stop() halts the engine, clears playing AND the live transport', async () => {
     await state().play();
     state().stop();
     expect(engine.stop).toHaveBeenCalled();
     expect(state().playing).toBe(false);
+    expect(state().transportLive).toBe(false); // the one case the clock holds
   });
 
-  it('panic() silences and stops without throwing', async () => {
+  it('panic() cuts to silence but keeps the transport (clock safe)', async () => {
     await state().play();
     await state().panic();
     expect(engine.panic).toHaveBeenCalled();
-    expect(state().playing).toBe(false);
+    expect(state().playing).toBe(false); // audio silenced
+    // transportLive tracks engine.started so the on-screen clock keeps turning
   });
 });
 
@@ -188,12 +195,22 @@ describe('cps control', () => {
   });
 });
 
-// hush is the soft cousin of panic: it silences via engine.panic and clears the
-// playing flag while leaving the clock intact.
+// HUSH is a MUSICAL exit (spec §10): it fades every sounding voice over a cycle
+// (not an instant cut like PANIC), clears playing, and keeps the transport live.
 describe('hush', () => {
-  it('calls engine.panic and clears playing', async () => {
+  it('fades over a cycle instead of cutting, and keeps the transport live', async () => {
     await state().play();
     expect(state().playing).toBe(true);
+    (engine.evaluate as any).mockClear();
+    await state().hush();
+    expect(state().playing).toBe(false);
+    expect(state().transportLive).toBe(true);
+    const sent = (engine.evaluate as any).mock.calls.at(-1)?.[0] as string;
+    expect(sent).toContain('.gain(saw.range(1, 0).slow(1))'); // a real fade, not `silence`
+  });
+
+  it('falls back to an instant silence when nothing is sounding', async () => {
+    // not playing → no fade to run; hush just silences safely
     await state().hush();
     expect(engine.panic).toHaveBeenCalled();
     expect(state().playing).toBe(false);
@@ -304,5 +321,202 @@ describe('provider configuration', () => {
     expect(role.provider).toBe('openai');
     expect(role.model).toBe('gpt-4o-mini');
     expect(role.strength).toBe('fast'); // strengthFor: mini → fast
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.2 — the four unkept promises + the fixes (spec §06/§07/§05/§10).
+// ---------------------------------------------------------------------------
+
+// Provenance rides on every staged edit; committing pushes it onto the history.
+describe('provenance (spec §07)', () => {
+  it('a directive edit carries source + directive provenance', () => {
+    state().selectVoice('hats');
+    state().runDirective('darker');
+    const prov = state().stagedEdit!.provenance!;
+    expect(prov.source).toBe('directive');
+    expect(prov.directive).toBe('darker');
+    expect(typeof prov.when).toBe('number');
+  });
+});
+
+// The history tree is committed states, not keystrokes. Accepting an edit pushes
+// a commit; rewind restores an earlier snapshot without erasing later ones.
+describe('history / time-travel (spec §07)', () => {
+  it('starts with a single root commit as HEAD', () => {
+    expect(state().history).toHaveLength(1);
+    expect(state().history[0].parentId).toBeNull();
+    expect(state().headId).toBe(state().history[0].id);
+  });
+
+  it('acceptEdit pushes a commit that becomes HEAD, carrying provenance', () => {
+    const rootId = state().headId;
+    state().selectVoice('hats');
+    state().runDirective('darker');
+    state().acceptEdit();
+    expect(state().history).toHaveLength(2);
+    const head = state().history.find((c) => c.id === state().headId)!;
+    expect(head.parentId).toBe(rootId);
+    expect(head.provenance.directive).toBe('darker');
+    expect(head.score).toContain('.lpf(600)');
+  });
+
+  it('rewind restores an earlier snapshot and moves HEAD, keeping the tree', () => {
+    const rootId = state().headId!;
+    const rootScore = state().score;
+    state().selectVoice('hats');
+    state().runDirective('darker');
+    state().acceptEdit();
+    expect(state().score).toContain('.lpf(600)');
+    state().rewind(rootId);
+    expect(state().score).toBe(rootScore);
+    expect(state().headId).toBe(rootId);
+    expect(state().history).toHaveLength(2); // later commit is NOT erased
+  });
+
+  it('forkFrom moves HEAD so the next commit branches', () => {
+    const rootId = state().headId!;
+    state().selectVoice('hats');
+    state().runDirective('darker');
+    state().acceptEdit();
+    state().forkFrom(rootId);
+    expect(state().headId).toBe(rootId);
+    // a new edit now branches off root rather than the darker commit
+    state().selectVoice('bass');
+    state().runDirective('louder');
+    state().acceptEdit();
+    const head = state().history.find((c) => c.id === state().headId)!;
+    expect(head.parentId).toBe(rootId);
+    expect(state().history).toHaveLength(3);
+  });
+});
+
+// The seed is visible and controllable: reproduce (same), nudge (+1), new (fresh).
+describe('seeded generation (spec §07)', () => {
+  it('reseed nudge advances the seed by one and regenerates open lanes', async () => {
+    await state().sendMaestro('give me 3 ways into the drop');
+    const before = state().seed;
+    const beforeCode = state().laneSet!.lanes.map((l) => l.code);
+    state().reseed('nudge');
+    expect(state().seed).toBe((before + 1) & 0xffff);
+    expect(state().laneSet!.seed).toBe(state().seed);
+    expect(state().laneSet!.lanes.map((l) => l.code)).not.toEqual(beforeCode);
+  });
+
+  it('reseed same keeps the seed (reproducible)', async () => {
+    await state().sendMaestro('give me 3 ways into the drop');
+    const before = state().seed;
+    state().reseed('same');
+    expect(state().seed).toBe(before);
+  });
+});
+
+// Editor context pins (spec §02) — dedupe identical ranges, remove, clear.
+describe('context pins (spec §02)', () => {
+  it('adds, dedupes, removes and clears pins', () => {
+    state().addPin({ voiceId: 'hats', startLine: 5, endLine: 6 });
+    state().addPin({ voiceId: 'hats', startLine: 5, endLine: 6 }); // dupe → ignored
+    expect(state().pins).toHaveLength(1);
+    state().addPin({ voiceId: 'pad', startLine: 11, endLine: 12 });
+    expect(state().pins).toHaveLength(2);
+    state().removePin(state().pins[0].id);
+    expect(state().pins).toHaveLength(1);
+    state().clearPins();
+    expect(state().pins).toHaveLength(0);
+  });
+});
+
+// Clock-as-target (spec §06) — an arc span becomes a .mask() on the target voice.
+describe('clock-as-target (spec §06)', () => {
+  it('applyArcToVoice stages a .mask() scoped to the dragged span', () => {
+    state().setArcSelection({ start: 0.5, end: 1 });
+    state().applyArcToVoice('hats');
+    const edit = state().stagedEdit!;
+    expect(edit.newCode).toContain('.mask("0 0 0 0 1 1 1 1")'); // back half
+    expect(edit.targetVoiceId).toBe('hats');
+    expect(state().arcSelection).toBeNull(); // consumed
+  });
+});
+
+// Stage lenses (spec §05) — stackable, toggle on/off.
+describe('lenses (spec §05)', () => {
+  it('toggleLens adds then removes a lens', () => {
+    expect(state().lenses).not.toContain('tracker');
+    state().toggleLens('tracker');
+    expect(state().lenses).toContain('tracker');
+    state().toggleLens('tracker');
+    expect(state().lenses).not.toContain('tracker');
+  });
+});
+
+// The Prompter (spec §04) — bounded observations; dismiss learns the "no".
+describe('prompter (spec §04)', () => {
+  it('refreshPrompter surfaces at most three cards from the parsed tree', () => {
+    state().refreshPrompter();
+    expect(state().prompterCards.length).toBeGreaterThan(0);
+    expect(state().prompterCards.length).toBeLessThanOrEqual(3);
+  });
+
+  it('dismissing a card quiets that kind for the session', () => {
+    state().refreshPrompter();
+    const card = state().prompterCards[0];
+    state().dismissCard(card.id);
+    expect(state().prompterDismissed).toContain(card.kind);
+    state().refreshPrompter();
+    expect(state().prompterCards.some((c) => c.kind === card.kind)).toBe(false);
+  });
+
+  it('togglePrompter mutes and clears the rail', () => {
+    state().refreshPrompter();
+    state().togglePrompter();
+    expect(state().prompterMuted).toBe(true);
+    expect(state().prompterCards).toHaveLength(0);
+  });
+});
+
+// The flagship multi-step agent (spec §03): /break runs real tools, states a
+// plan, and lands ONE staged, reversible diff.
+describe('agent · /break (spec §03)', () => {
+  it('stages a break: masks the rhythm section, adds a riser, records plan+tools', async () => {
+    await state().runBreak();
+    const edit = state().stagedEdit!;
+    expect(edit).not.toBeNull();
+    expect(edit.newCode).toContain('.mask("<0 0 0 0 0 0 1 1>")'); // drop 6 bars, back 2
+    expect(edit.newCode).toContain('$riser:'); // a riser fills the gap
+    expect(edit.newCode).toContain('.gain("1.5 1 1 1")'); // sforzando return
+    const msg = state().messages.at(-1)!;
+    expect(msg.plan?.length).toBe(4);
+    expect(msg.plan?.every((s) => s.status === 'done')).toBe(true);
+    expect(msg.toolLog?.map((t) => t.name)).toEqual(['parse AST', 'queryArc(0,8)', 'write diff', 'dry-run audio']);
+    expect(msg.reasoning).toBeTruthy();
+    expect(edit.provenance?.source).toBe('agent');
+    // it snapshots the pre-break mix as a recoverable scene
+    expect(state().scenes.some((s) => s.name === 'pre-break')).toBe(true);
+  });
+
+  it('routes the /break command through sendMaestro', async () => {
+    await state().sendMaestro('/break');
+    expect(state().stagedEdit).not.toBeNull();
+    expect(state().stagedEdit!.newCode).toContain('$riser:');
+  });
+});
+
+// Author-your-own directives (spec §10) — bind a verb, run it like a built-in.
+describe('custom directives (spec §10)', () => {
+  it('binds a directive and runs it, appending its chain to the target voice', () => {
+    state().addCustomDirective({ label: 'Shimmer', aliases: ['shimmer'], chain: '.room(0.5).delay(0.3)', blurb: 'adds air.' });
+    const dir = state().customDirectives.find((d) => d.label === 'Shimmer')!;
+    expect(dir.id).toBe('u_shimmer');
+    state().selectVoice('hats');
+    state().runDirective(dir.id);
+    expect(state().stagedEdit!.newCode).toContain('.room(0.5).delay(0.3)');
+    expect(state().stagedEdit!.provenance!.directive).toBe('u_shimmer');
+  });
+
+  it('removeCustomDirective drops it', () => {
+    state().addCustomDirective({ label: 'Shimmer', aliases: [], chain: '.room(0.5)', blurb: '' });
+    const dir = state().customDirectives.find((d) => d.label === 'Shimmer')!;
+    state().removeCustomDirective(dir.id);
+    expect(state().customDirectives.find((d) => d.id === dir.id)).toBeUndefined();
   });
 });

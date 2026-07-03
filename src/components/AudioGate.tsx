@@ -23,7 +23,7 @@ export function AudioGate() {
   } else if (status === 'ready' && !playing) {
     content = (
       <button onClick={play} style={{ ...mono, fontSize: 11, color: 'var(--live-ink)', background: 'var(--live)', borderRadius: 6, padding: '5px 12px', fontWeight: 700 }}>
-        ▶ press Space to play
+        ▶ press F5 to play
       </button>
     );
   } else {

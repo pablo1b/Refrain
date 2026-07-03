@@ -57,6 +57,25 @@ export const DIRECTIVES: Directive[] = [
 export const DIRECTIVE_BY_ID = Object.fromEntries(DIRECTIVES.map((d) => [d.id, d]));
 
 // ---------------------------------------------------------------------------
+// Commands — the non-directive verbs in the slash palette (spec §03.2). These
+// route to multi-step / generative / answer turns rather than a single bounded
+// transform. Grouped alongside directives in the command menu.
+// ---------------------------------------------------------------------------
+export type CommandGroup = 'GENERATE' | 'ASK';
+export interface Command {
+  id: string;
+  label: string; // shown in the palette, e.g. "/break"
+  group: CommandGroup;
+  blurb: string;
+}
+export const COMMANDS: Command[] = [
+  { id: 'break', label: '/break', group: 'GENERATE', blurb: 'build a multi-bar drop & return' },
+  { id: 'variations', label: '/variations', group: 'GENERATE', blurb: '2–4 lanes against the mix' },
+  { id: 'explain', label: '/explain', group: 'ASK', blurb: 'read this line as music' },
+];
+export const COMMAND_BY_ID = Object.fromEntries(COMMANDS.map((c) => [c.id, c]));
+
+// ---------------------------------------------------------------------------
 // Score-level helpers — operate on raw lines so unchanged lines stay byte-exact
 // and the diff is minimal.
 // ---------------------------------------------------------------------------
@@ -244,6 +263,7 @@ export function applyDirective(
 
 export type Intent =
   | { kind: 'directive'; id: string; voiceHint?: string; degree?: number }
+  | { kind: 'command'; id: string; prompt: string; voiceHint?: string }
   | { kind: 'lanes'; prompt: string }
   | { kind: 'answer'; question: string }
   | { kind: 'unknown'; text: string };
@@ -255,20 +275,20 @@ export function interpret(text: string, voiceIds: string[]): Intent {
   const raw = text.trim();
   const t = raw.toLowerCase();
 
-  // slash command: /swing $hats 8
+  // slash command: /swing $hats 8 · /break · /variations · /explain
   if (raw.startsWith('/')) {
     const parts = raw.slice(1).trim().split(/\s+/);
-    const id = resolveDirectiveId(parts[0]);
-    if (id) {
-      let voiceHint: string | undefined;
-      let degree: number | undefined;
-      for (const p of parts.slice(1)) {
-        if (p.startsWith('$')) voiceHint = p.slice(1);
-        else if (voiceIds.includes(p)) voiceHint = p;
-        else if (/^\d+(\.\d+)?$/.test(p)) degree = parseFloat(p);
-      }
-      return { kind: 'directive', id, voiceHint, degree };
+    const token = parts[0]?.toLowerCase();
+    let voiceHint: string | undefined;
+    let degree: number | undefined;
+    for (const p of parts.slice(1)) {
+      if (p.startsWith('$')) voiceHint = p.slice(1);
+      else if (voiceIds.includes(p)) voiceHint = p;
+      else if (/^\d+(\.\d+)?$/.test(p)) degree = parseFloat(p);
     }
+    if (COMMAND_BY_ID[token]) return { kind: 'command', id: token, prompt: raw, voiceHint };
+    const id = resolveDirectiveId(parts[0]);
+    if (id) return { kind: 'directive', id, voiceHint, degree };
     return { kind: 'unknown', text: raw };
   }
 

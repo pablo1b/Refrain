@@ -80,12 +80,33 @@ const GEN_TEMPLATES: Template[] = [
   },
 ];
 
-export function buildLanes(prompt: string, existingIds: string[], reroll = false): Lane[] {
+const WORD_NUM: Record<string, number> = { two: 2, three: 3, four: 4 };
+
+/** How many lanes to offer: 2–4, following the request (spec §10). */
+export function laneCount(prompt: string): number {
+  const lower = prompt.toLowerCase();
+  const digit = lower.match(/\b([2-9])\b/);
+  if (digit) return Math.min(4, Math.max(2, parseInt(digit[1], 10)));
+  for (const [w, n] of Object.entries(WORD_NUM)) {
+    if (new RegExp(`\\b${w}\\b`).test(lower)) return n;
+  }
+  return 3;
+}
+
+/**
+ * Build 2–4 variation lanes for a prompt. `seed` (a visible 16-bit value, spec
+ * §07) makes generation reproducible: the same seed always yields the same
+ * forks; a nudged seed rotates the template set + variant so it wanders one step.
+ */
+export function buildLanes(prompt: string, existingIds: string[], seed = 0): Lane[] {
   const lower = prompt.toLowerCase();
   const dropish = /\b(drop|build|hard|riser|fill|peak|climax|energy|intense)\b/.test(lower);
-  const templates = dropish ? DROP_TEMPLATES : GEN_TEMPLATES;
-  const n = 3; // spec figure shows three lanes
-  const variant = reroll ? 1 + (laneCounter % 2) : 0;
+  const pool = dropish ? DROP_TEMPLATES : GEN_TEMPLATES;
+  const n = laneCount(prompt);
+  // rotate the template set deterministically by the seed so different seeds
+  // surface different ideas, while the same seed is exactly reproducible.
+  const offset = ((seed % pool.length) + pool.length) % pool.length;
+  const templates = [...pool.slice(offset), ...pool.slice(0, offset)];
   const labels = ['A', 'B', 'C', 'D'];
   const used = new Set(existingIds);
 
@@ -95,6 +116,8 @@ export function buildLanes(prompt: string, existingIds: string[], reroll = false
     let k = 1;
     while (used.has(voiceId)) voiceId = `${t.voice}${k++}`;
     used.add(voiceId);
+    // variant is deterministic in (seed, lane) → reproducible per seed
+    const variant = (seed + i) % 3;
     return {
       id: lid(),
       label: labels[i],
@@ -102,7 +125,7 @@ export function buildLanes(prompt: string, existingIds: string[], reroll = false
       desc: t.desc,
       voiceId,
       shape: t.shape,
-      code: `$${voiceId}: ${t.expr(variant + i * 0)}`,
+      code: `$${voiceId}: ${t.expr(variant)}`,
     } satisfies Lane;
   });
 }
