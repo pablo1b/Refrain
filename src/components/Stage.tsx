@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useStore } from '../state/store';
 import { CycleClock } from './CycleClock';
 import { useMeters } from './useMeters';
-import { TrackerLens, SpectrumLens, WheelLens, BloomLens } from './Lenses';
+import { TrackerLens, SpectrumLens, WheelLens, BloomLens, ScoreLens } from './Lenses';
 import type { LensId } from '../types';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
@@ -10,10 +10,12 @@ const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 const LENS_CHIPS: { id: LensId; label: string }[] = [
   { id: 'cycle', label: '◷ Cycle' },
   { id: 'tracker', label: '▤ Tracker' },
+  { id: 'score', label: '♩ Score' },
   { id: 'spectrum', label: '≋ Spectrum' },
   { id: 'wheel', label: '⊚ Wheel' },
   { id: 'bloom', label: '✺ Bloom' },
   { id: 'sparklines', label: '∿ Sparklines' },
+  { id: 'miniroll', label: '⊞ Roll' },
   { id: 'meters', label: '▥ Meters' },
 ];
 
@@ -74,7 +76,7 @@ export function Stage() {
         )}
 
         {/* mixer: compact real meters + solo/mute (spec §05 FIX) */}
-        <div style={{ flex: on('tracker') || on('spectrum') || on('wheel') || on('bloom') ? '0 0 300px' : 1, minWidth: 0, padding: '10px 14px', overflowY: 'auto', borderRight: '1px solid var(--line-3)' }}>
+        <div style={{ flex: on('tracker') || on('spectrum') || on('wheel') || on('bloom') || on('score') ? '0 0 300px' : 1, minWidth: 0, padding: '10px 14px', overflowY: 'auto', borderRight: '1px solid var(--line-3)' }}>
           <div style={{ ...mono, fontSize: 10, letterSpacing: '.14em', color: 'var(--text-dim)', marginBottom: 8 }}>THE STAGE — {voices.length} VOICES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {voices.map((v) => {
@@ -99,8 +101,9 @@ export function Stage() {
         </div>
 
         {/* lens strip */}
-        {(on('tracker') || on('spectrum') || on('wheel') || on('bloom')) && (
+        {(on('tracker') || on('spectrum') || on('wheel') || on('bloom') || on('score')) && (
           <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 10, padding: 10, overflowX: 'auto', alignItems: 'stretch' }}>
+            {on('score') && <ScoreLens />}
             {on('tracker') && <TrackerLens />}
             {on('spectrum') && <SpectrumLens />}
             {on('wheel') && <WheelLens />}

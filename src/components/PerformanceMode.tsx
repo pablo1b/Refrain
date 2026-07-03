@@ -35,15 +35,18 @@ export function PerformanceMode() {
   const snapshot = useStore((s) => s.snapshotScene);
   const panic = useStore((s) => s.panic);
   const hush = useStore((s) => s.hush);
+  const midiOn = useStore((s) => s.midiOn);
   const anySolo = voices.some((v) => v.solo);
   const { levels } = useMeters();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMode('studio');
-      if (e.key === 'F5') {
+      const s = useStore.getState();
+      const isTransport = s.transportKey === 'f5' ? e.key === 'F5' : (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'Enter' || e.key === 'Return');
+      if (isTransport) {
         e.preventDefault();
-        useStore.getState().togglePlay();
+        s.togglePlay();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -117,7 +120,13 @@ export function PerformanceMode() {
             </button>
           );
         })}
-        <span style={{ marginLeft: 'auto', ...mono, fontSize: 10, color: 'var(--text-dim)' }}>◎ MIDI mappable</span>
+        <button
+          onClick={() => { setMode('studio'); useStore.getState().openSurface('ports'); }}
+          title="MIDI / OSC sync-out — the Cycle as master (§12.7)"
+          style={{ marginLeft: 'auto', ...mono, fontSize: 10, color: midiOn ? 'var(--live)' : 'var(--text-dim)' }}
+        >
+          ◎ {midiOn ? 'MIDI sync-out live' : 'MIDI sync-out'}
+        </button>
         <button onClick={hush} style={{ ...mono, fontSize: 13, fontWeight: 700, color: 'var(--live-ink)', background: 'var(--hush)', borderRadius: 7, padding: '8px 16px' }}>
           HUSH
         </button>

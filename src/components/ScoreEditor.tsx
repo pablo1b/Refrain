@@ -1,13 +1,16 @@
 import { useEffect, useRef } from 'react';
-import { EditorState, StateEffect, StateField, Compartment, Transaction, type Range } from '@codemirror/state';
+import { EditorState, StateEffect, StateField, Compartment, Transaction, RangeSet, type Range } from '@codemirror/state';
 import {
   EditorView,
   keymap,
   lineNumbers,
   highlightActiveLine,
+  gutter,
+  GutterMarker,
   Decoration,
   type DecorationSet,
   WidgetType,
+  type BlockInfo,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { autocompletion, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
@@ -16,6 +19,9 @@ import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { parseScore } from '../music/parseScore';
 import { useStore } from '../state/store';
+import { buildMiniRoll } from './miniRoll';
+import type { MiniRollMode } from '../types';
+import type { EngineEvent } from '../audio/strudelEngine';
 
 // ---- grounded completion vocabulary (spec §02) ----
 // Every name here is a REAL Strudel method/function (verified against the
@@ -101,19 +107,139 @@ function selectVoiceUnderCaret(view: EditorView) {
   window.dispatchEvent(new CustomEvent('refrain:focus-maestro'));
 }
 
-/** Pin the voice block under a gutter line-number click as Maestro context (§02). */
-function pinLineAt(view: EditorView, pos: number) {
-  const lineNo = view.state.doc.lineAt(pos).number - 1; // 0-based
+/** The pin context for a gutter line — its voice block, or the bare line (§02). */
+function ctxForLine(view: EditorView, line0: number): { voiceId?: string; startLine: number; endLine: number } {
   const { voices } = parseScore(view.state.doc.toString());
-  const v = voices.find((vv) => lineNo >= vv.startLine && lineNo <= vv.endLine);
+  const v = voices.find((vv) => line0 >= vv.startLine && line0 <= vv.endLine);
+  if (v) return { voiceId: v.id, startLine: v.startLine + 1, endLine: v.endLine + 1 };
+  return { startLine: line0 + 1, endLine: line0 + 1 };
+}
+
+/** 0-based line under a client Y — for gutter drag-selection (spec §12.2). */
+function lineAtClientY(view: EditorView, clientY: number): number {
+  const rect = view.dom.getBoundingClientRect();
+  const pos = view.posAtCoords({ x: rect.left + 5, y: clientY });
+  if (pos == null) return clientY < rect.top ? 0 : view.state.doc.lines - 1;
+  return view.state.doc.lineAt(pos).number - 1;
+}
+
+/**
+ * The gutter gesture set (spec §12.2): click pins a voice block, drag pins a
+ * contiguous line range, ⇧-click extends the last range, ⌘/⌃-click adds a
+ * disjoint range, clicking a pinned line toggles it off. Pins ride into a
+ * Maestro turn in gutter order.
+ */
+function onGutterMouseDown(view: EditorView, line: BlockInfo, event: MouseEvent) {
+  event.preventDefault();
   const store = useStore.getState();
-  if (v) {
-    store.selectVoice(v.id);
-    store.addPin({ voiceId: v.id, startLine: v.startLine + 1, endLine: v.endLine + 1 });
-  } else {
-    store.addPin({ startLine: lineNo + 1, endLine: lineNo + 1 });
+  const line0 = view.state.doc.lineAt(line.from).number - 1;
+  const ctx = ctxForLine(view, line0);
+  if (ctx.voiceId) store.selectVoice(ctx.voiceId);
+
+  if (event.shiftKey) {
+    store.extendLastPin(line0 + 1); // ⇧ extends the last range to here
+    return;
+  }
+  if (event.metaKey || event.ctrlKey) {
+    store.addPin({ voiceId: ctx.voiceId, startLine: ctx.startLine, endLine: ctx.endLine }); // ⌘/⌃ disjoint add
+    return;
+  }
+  const covering = store.pins.find((p) => line0 + 1 >= p.startLine && line0 + 1 <= p.endLine);
+  if (covering) {
+    store.removePin(covering.id); // click a pinned line → toggle off
+    return;
+  }
+
+  // otherwise: a click pins the voice block; a drag pins a contiguous line range
+  let moved = false;
+  let pinId: string | null = null;
+  const onMove = (e: MouseEvent) => {
+    if (!view.dom.isConnected) return onUp(); // editor unmounted mid-drag → self-clean
+    const cur = lineAtClientY(view, e.clientY);
+    if (cur === line0 && !moved) return;
+    moved = true;
+    const lo = Math.min(line0, cur);
+    const hi = Math.max(line0, cur);
+    if (pinId == null) pinId = store.addPin({ startLine: lo + 1, endLine: hi + 1 });
+    else store.updatePin(pinId, { startLine: lo + 1, endLine: hi + 1, voiceId: undefined });
+  };
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    if (!moved) store.addPin({ voiceId: ctx.voiceId, startLine: ctx.startLine, endLine: ctx.endLine });
+  };
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+}
+
+// ---- inline gutter mini-roll (spec §12.5) ----
+// A tiny per-voice piano-roll beside its definition line, sharing the Tracker's
+// event data + colour. Pushed in from the store via a StateEffect; the gutter
+// recomputes its markers when that effect fires (lineMarkerChange).
+interface MiniData {
+  on: boolean;
+  scoreLens: boolean;
+  voices: { id: string; startLine: number; color: string; expr: string }[];
+  events: Record<string, EngineEvent[]>;
+  mode: Record<string, MiniRollMode>;
+}
+const setMini = StateEffect.define<MiniData>();
+const miniField = StateField.define<MiniData>({
+  create: () => ({ on: false, scoreLens: false, voices: [], events: {}, mode: {} }),
+  update(value, tr) {
+    for (const e of tr.effects) if (e.is(setMini)) return e.value;
+    return value;
+  },
+});
+
+class MiniMarker extends GutterMarker {
+  constructor(private v: { id: string; color: string; expr: string; events: EngineEvent[]; mode: 'roll' | 'spark'; scoreLens: boolean }) {
+    super();
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.style.display = 'inline-flex';
+    span.style.alignItems = 'center';
+    span.style.padding = '0 4px';
+    span.style.cursor = 'pointer';
+    span.title = `$${this.v.id} · click to cycle roll → spark → off`;
+    span.appendChild(buildMiniRoll({ events: this.v.events, color: this.v.color, mode: this.v.mode, expr: this.v.expr, scoreLens: this.v.scoreLens }));
+    span.onmousedown = (e) => e.preventDefault();
+    span.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      useStore.getState().cycleMiniRoll(this.v.id);
+    };
+    return span;
   }
 }
+class SpacerMarker extends GutterMarker {
+  toDOM() {
+    const s = document.createElement('span');
+    s.style.display = 'inline-block';
+    s.style.width = '0px';
+    return s;
+  }
+}
+const miniRollGutter = gutter({
+  class: 'cm-miniroll',
+  markers: (view) => {
+    const d = view.state.field(miniField, false);
+    if (!d || !d.on) return RangeSet.empty;
+    const ms: Range<GutterMarker>[] = [];
+    for (const v of d.voices) {
+      const mode = d.mode[v.id] ?? 'roll';
+      if (mode === 'off') continue;
+      const ln = v.startLine + 1;
+      if (ln < 1 || ln > view.state.doc.lines) continue;
+      const line = view.state.doc.line(ln);
+      ms.push(new MiniMarker({ id: v.id, color: v.color, expr: v.expr, events: d.events[v.id] ?? [], mode: mode === 'spark' ? 'spark' : 'roll', scoreLens: d.scoreLens }).range(line.from));
+    }
+    return RangeSet.of(ms, true);
+  },
+  lineMarkerChange: (update) => update.transactions.some((tr) => tr.effects.some((e) => e.is(setMini))),
+  initialSpacer: () => new SpacerMarker(),
+});
 
 // ---- dynamic decorations: active voice block + sigils + play marker ----
 const setMeta = StateEffect.define<{ activeVoiceId: string | null; playing: boolean }>();
@@ -188,6 +314,11 @@ export function ScoreEditor() {
   const theme = useStore((s) => s.theme);
   const setScore = useStore((s) => s.setScore);
   const play = useStore((s) => s.play);
+  // inline mini-roll inputs (spec §12.5)
+  const voices = useStore((s) => s.voices);
+  const events = useStore((s) => s.events);
+  const miniRoll = useStore((s) => s.miniRoll);
+  const lenses = useStore((s) => s.lenses);
 
   // build the editor once
   useEffect(() => {
@@ -197,14 +328,15 @@ export function ScoreEditor() {
       extensions: [
         lineNumbers({
           domEventHandlers: {
-            // click a line number to pin its voice range as context (spec §02)
+            // gutter gesture set: click / drag / ⇧ / ⌘ pin ranges (spec §02, §12.2)
             mousedown: (view, block, event) => {
-              (event as MouseEvent).preventDefault();
-              pinLineAt(view, block.from);
+              onGutterMouseDown(view, block, event as MouseEvent);
               return true;
             },
           },
         }),
+        miniField,
+        miniRollGutter,
         history(),
         highlightActiveLine(),
         javascript(),
@@ -234,7 +366,11 @@ export function ScoreEditor() {
           ...historyKeymap,
         ]),
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) setScore(u.state.doc.toString(), { reaudition: true });
+          // ignore the echo from our own programmatic sync (external score change),
+          // which already matches the store — only user edits differ from it.
+          if (u.docChanged && u.state.doc.toString() !== useStore.getState().score) {
+            setScore(u.state.doc.toString(), { reaudition: true });
+          }
         }),
         EditorView.lineWrapping,
       ],
@@ -274,6 +410,19 @@ export function ScoreEditor() {
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setMeta.of({ activeVoiceId, playing }) });
   }, [activeVoiceId, playing]);
+
+  // push the inline mini-roll data into the gutter when it changes (spec §12.5)
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: setMini.of({
+        on: lenses.includes('miniroll'),
+        scoreLens: lenses.includes('score'),
+        voices: voices.map((v) => ({ id: v.id, startLine: v.startLine, color: v.color, expr: v.expr })),
+        events,
+        mode: miniRoll,
+      }),
+    });
+  }, [voices, events, miniRoll, lenses]);
 
   // theme → reconfigure the editor base variant (light/dark)
   useEffect(() => {

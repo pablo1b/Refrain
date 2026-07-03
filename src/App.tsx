@@ -12,11 +12,13 @@ import { Arrangement } from './components/Arrangement';
 import { PatchDesigner } from './components/PatchDesigner';
 import { SampleFoundry } from './components/SampleFoundry';
 import { NotationBridge } from './components/NotationBridge';
-import { History } from './components/History';
+import { History, MergeConflictModal } from './components/History';
 import { DirectiveForge } from './components/DirectiveForge';
 import { Projects } from './components/Projects';
 import { Prompter } from './components/Prompter';
 import { AudioGate } from './components/AudioGate';
+import { Settings } from './components/Settings';
+import { Ports } from './components/Ports';
 
 function isEditable(el: EventTarget | null): boolean {
   const node = el as HTMLElement | null;
@@ -32,6 +34,7 @@ export default function App() {
   const surface = useStore((s) => s.surface);
   const openSurface = useStore((s) => s.openSurface);
   const stagedEdit = useStore((s) => s.stagedEdit);
+  const pendingMerge = useStore((s) => s.pendingMerge);
   const initAudio = useStore((s) => s.initAudio);
 
   // keep the <html data-theme> attribute in sync with the store
@@ -39,6 +42,12 @@ export default function App() {
     setTheme(theme);
     // open the last project from local storage (spec §08)
     useStore.getState().hydrateFromStorage();
+    // reflect the resolved reduced-motion pref onto <html> (spec §12.8)
+    useStore.getState().applyMotion();
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const onMotion = () => useStore.getState().applyMotion();
+    mq?.addEventListener?.('change', onMotion);
+    return () => mq?.removeEventListener?.('change', onMotion);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,8 +77,14 @@ export default function App() {
       const s = useStore.getState();
       const editable = isEditable(e.target);
 
-      // F5 — play/pause the transport (works even while typing)
-      if (e.key === 'F5') {
+      // transport play/pause — the ACTIVE binding (spec §12.3). Browser tier
+      // defaults to ⌘⇧⏎ (never browser-reserved); F5 is an opt-in alias. Works
+      // even while typing.
+      const isTransport =
+        s.transportKey === 'f5'
+          ? e.key === 'F5'
+          : (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'Enter' || e.key === 'Return');
+      if (isTransport) {
         e.preventDefault();
         s.togglePlay();
         return;
@@ -116,6 +131,14 @@ export default function App() {
       if (e.altKey && e.key === '.') {
         e.preventDefault();
         s.togglePrompter();
+        return;
+      }
+      // Esc clears pins/arc back to whole-file even from the focused editor (§12.2)
+      // — but only when there's nothing more local for Esc to do (no staged edit,
+      // no open surface), so it never steals Esc from a completion/dialog.
+      if (e.key === 'Escape' && !s.stagedEdit && !s.surface && (s.pins.length || s.arcSelection)) {
+        s.clearPins();
+        s.setArcSelection(null);
         return;
       }
       if (editable) return;
@@ -167,6 +190,10 @@ export default function App() {
       {surface === 'history' && <History />}
       {surface === 'directives' && <DirectiveForge />}
       {surface === 'projects' && <Projects />}
+      {surface === 'settings' && <Settings />}
+      {surface === 'ports' && <Ports />}
+      {/* voice-granular merge conflict card — shows over any surface (spec §12.6) */}
+      {pendingMerge && <MergeConflictModal />}
     </div>
   );
 }

@@ -1,6 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { engine } from '../audio/strudelEngine';
+import { useReducedMotion } from './useReducedMotion';
+import { analyzeVoiceForScore, staffY, diatonicAtY, retuneNoteString, type EngraveVoice } from '../music/notation';
+import { parseScore, replaceBlock } from '../music/parseScore';
 
 // ---------------------------------------------------------------------------
 // Lenses on the sound (spec §05) — honest ways to see it, each built from real
@@ -28,20 +31,23 @@ function LensShell({ title, sub, children }: { title: string; sub?: string; chil
 export function TrackerLens() {
   const voices = useStore((s) => s.voices).slice(0, 6);
   const events = useStore((s) => s.events);
+  const reduced = useReducedMotion();
   const headRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let raf = 0;
     const loop = () => {
       if (headRef.current) {
-        const phase = engine.started ? (((engine.now() % 1) + 1) % 1) : 0;
+        let phase = engine.started ? (((engine.now() % 1) + 1) % 1) : 0;
+        // reduced motion: step the playhead once per 1/16 — still tells time (§12.8)
+        if (reduced) phase = Math.floor(phase * 16) / 16;
         headRef.current.style.left = `${phase * 100}%`;
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [reduced]);
 
   return (
     <LensShell title="▤ Tracker" sub="one cycle, linear">
@@ -270,4 +276,192 @@ export function BloomLens() {
       </div>
     </LensShell>
   );
+}
+
+// ---- Score: real notation where it earns it (spec §12.1) ----
+// Pitched voices engrave to a staff with the live key signature; the lime barline
+// is the cycle playhead. Dragging a notehead rewrites the note() literal — a
+// staged, reversible diff. Voices a staff can't honestly show flag + defer to the
+// Tracker rather than lie with an approximation.
+const CLEF_GLYPH = { treble: '𝄞', bass: '𝄢' } as const;
+
+export function ScoreLens() {
+  const voices = useStore((s) => s.voices);
+  const score = useStore((s) => s.score);
+  const stageEdit = useStore((s) => s.stageEdit);
+  const toggleLens = useStore((s) => s.toggleLens);
+  const lenses = useStore((s) => s.lenses);
+  const reduced = useReducedMotion();
+
+  const systems = voices.map((v) => ({ v, eng: analyzeVoiceForScore(v.expr) }));
+  const anyEngravable = systems.some((s) => s.eng.engravable);
+
+  // crude live key label from the pitched voices (shared with the Wheel)
+  const keyLabel = deriveKey(voices);
+
+  const retune = (voiceId: string, tokenIndex: number, newDiatonic: number) => {
+    const parsed = parseScore(score);
+    const pv = parsed.voices.find((v) => v.id === voiceId);
+    if (!pv) return;
+    const block = score.split('\n').slice(pv.startLine, pv.endLine + 1).join('\n');
+    const m = block.match(/(\b(?:note|chord)\(\s*")([^"]*)(")/);
+    if (!m) return;
+    const newArg = retuneNoteString(m[2], tokenIndex, newDiatonic);
+    if (newArg === m[2]) return;
+    const newBlock = block.replace(m[0], `${m[1]}${newArg}${m[3]}`);
+    const newScore = replaceBlock(score, pv.startLine, pv.endLine, newBlock);
+    stageEdit(`Retune **$${voiceId}** on the staff — \`${m[2]}\` → \`${newArg}\`. Staged, reversible like any edit.`, newScore, { directive: 'retune' });
+  };
+
+  return (
+    <div style={{ flex: 'none', width: 460, borderRadius: 10, overflow: 'hidden', background: 'var(--bg-deep)', border: '1px solid var(--line-3)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 11px', borderBottom: '1px solid var(--line-3)', ...mono, fontSize: 10, color: 'var(--text-1)' }}>
+        ♩ Score <span style={{ color: 'var(--text-dim)' }}>· engraved · read + light-edit</span>
+        <span style={{ marginLeft: 'auto', color: 'var(--live)' }}>{keyLabel}</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {!anyEngravable && (
+          <div style={{ ...mono, fontSize: 10.5, color: 'var(--text-2)', padding: 8 }}>No pitched voice to engrave — the Tracker shows the rhythm.</div>
+        )}
+        {systems.map(({ v, eng }) =>
+          eng.engravable ? (
+            <ScoreSystem key={v.id} voiceId={v.id} color={v.color} eng={eng} reduced={reduced} onRetune={retune} />
+          ) : (
+            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ ...mono, fontSize: 9, color: v.color, width: 38, flex: 'none' }}>{v.id}</span>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--bg-deeper)', border: '1px dashed var(--line-5)', borderRadius: 7, padding: '6px 9px' }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>⚠</span>
+                <span style={{ fontSize: 10.5, color: 'var(--text-2)' }}>{eng.reason}</span>
+                {!lenses.includes('tracker') && (
+                  <button onClick={() => toggleLens('tracker')} style={{ marginLeft: 'auto', ...mono, fontSize: 9, color: 'var(--live)' }}>open Tracker →</button>
+                )}
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+      <div style={{ ...mono, fontSize: 9, color: 'var(--text-dim)', padding: '6px 11px', borderTop: '1px solid var(--line-3)' }}>
+        <span style={{ color: 'var(--live)' }}>●</span> playhead = the cycle · drag a notehead → edits <span style={{ color: 'var(--text-1)' }}>note()</span> · <span style={{ color: 'var(--maestro)' }}>⚠</span> beyond-staff stays code
+      </div>
+    </div>
+  );
+}
+
+// One engraved system for a single voice — staff lines, noteheads, live playhead.
+function ScoreSystem({ voiceId, color, eng, reduced, onRetune }: { voiceId: string; color: string; eng: EngraveVoice; reduced: boolean; onRetune: (voiceId: string, tokenIndex: number, d: number) => void }) {
+  const VBW = 300;
+  const TOP = 14;
+  const GAP = 10;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const headRef = useRef<SVGLineElement>(null);
+  const [drag, setDrag] = useState<{ tokenIndex: number; diatonic: number } | null>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      if (headRef.current) {
+        let phase = engine.started ? (((engine.now() % 1) + 1) % 1) : 0;
+        if (reduced) phase = Math.floor(phase * 16) / 16;
+        const x = (phase * VBW).toFixed(1);
+        headRef.current.setAttribute('x1', x);
+        headRef.current.setAttribute('x2', x);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [reduced]);
+
+  const svgYToDiatonic = (clientY: number): number => {
+    const el = svgRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    const y = ((clientY - r.top) / r.height) * 58;
+    return diatonicAtY(y, eng.clef, TOP, GAP);
+  };
+
+  const onDown = (tokenIndex: number, startD: number) => (e: React.PointerEvent) => {
+    if (eng.mode !== 'melodic') return;
+    e.preventDefault();
+    setDrag({ tokenIndex, diatonic: startD });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!svgRef.current) return; // unmounted mid-drag
+      const d = svgYToDiatonic(ev.clientY);
+      setDrag(null);
+      if (d !== startD) onRetune(voiceId, tokenIndex, d);
+    };
+    const move = (ev: PointerEvent) => {
+      if (!svgRef.current) return up(ev); // unmounted → self-clean
+      setDrag({ tokenIndex, diatonic: svgYToDiatonic(ev.clientY) });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const lineYs = [0, 1, 2, 3, 4].map((k) => TOP + k * GAP);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ ...mono, fontSize: 9, color, width: 38, flex: 'none' }}>
+        {voiceId}
+        <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontSize: 16, color: 'var(--text-3)', lineHeight: 1 }}>{CLEF_GLYPH[eng.clef]}</span>
+      </span>
+      <svg ref={svgRef} width="100%" height={44} viewBox={`0 0 ${VBW} 58`} preserveAspectRatio="none" style={{ flex: 1, background: 'var(--bg-deeper)', borderRadius: 6 }}>
+        <g stroke="var(--line-4)" strokeWidth={1}>
+          {lineYs.map((y) => (
+            <line key={y} x1={0} y1={y} x2={VBW} y2={y} />
+          ))}
+        </g>
+        {/* melodic noteheads (draggable) */}
+        {eng.mode === 'melodic' &&
+          eng.notes.map((n) => {
+            const d = drag && drag.tokenIndex === n.tokenIndex ? drag.diatonic : n.diatonic;
+            const cx = 8 + n.x * (VBW - 16);
+            const cy = staffY(d, eng.clef, TOP, GAP);
+            return (
+              <g key={n.tokenIndex} style={{ cursor: 'ns-resize' }} onPointerDown={onDown(n.tokenIndex, n.diatonic)}>
+                {/* accidental glyph so eb2 and e2 don't engrave identically (§12.1) */}
+                {n.accidental && (
+                  <text x={cx - 10} y={cy + 3} fontFamily="var(--font-display)" fontSize={11} fill={color}>
+                    {n.accidental === '#' ? '♯' : '♭'}
+                  </text>
+                )}
+                <ellipse cx={cx} cy={cy} rx={6} ry={4.4} fill={color} transform={`rotate(-18 ${cx} ${cy})`} />
+                <line x1={cx + 5.5} y1={cy} x2={cx + 5.5} y2={cy - 20} stroke={color} strokeWidth={1.4} />
+              </g>
+            );
+          })}
+        {/* chord-symbol stacks (read-only) */}
+        {eng.mode === 'chords' &&
+          eng.chords.map((c, ci) => {
+            const cx = 20 + c.x * (VBW - 40);
+            return (
+              <g key={ci} fill={color}>
+                {Array.from({ length: c.size }).map((_, k) => (
+                  <ellipse key={k} cx={cx} cy={staffY(c.rootDiatonic + k * 2, eng.clef, TOP, GAP)} rx={6} ry={4.4} transform={`rotate(-18 ${cx} ${staffY(c.rootDiatonic + k * 2, eng.clef, TOP, GAP)})`} />
+                ))}
+                <text x={cx} y={9} textAnchor="middle" style={{ ...mono }} fontSize={7.5} fill="var(--text-2)">
+                  {c.symbol}
+                </text>
+              </g>
+            );
+          })}
+        <line ref={headRef} x1={0} y1={2} x2={0} y2={56} stroke="var(--live)" strokeWidth={2} />
+      </svg>
+    </div>
+  );
+}
+
+// crude live key from the pitched voices (root of the first chord/note, minor if
+// a minor third is present) — the same guess the Wheel lens makes.
+function deriveKey(voices: { expr: string; muted: boolean }[]): string {
+  const pcs = pitchClasses(voices.filter((v) => /note\(|\bn\(|chord\(/.test(v.expr) && !v.muted).map((v) => v.expr));
+  const rootVoice = voices.find((v) => /note\("<|chord\(/.test(v.expr)) ?? voices.find((v) => /note\(/.test(v.expr));
+  const rootPc = rootVoice ? [...pitchClasses([rootVoice.expr])][0] ?? null : null;
+  if (rootPc == null) return '—';
+  const minor = pcs.has((rootPc + 3) % 12);
+  // no meter readout — Refrain patterns are cycle-based, not metered (don't fabricate 4/4)
+  return `${PC_NAMES[rootPc]} ${minor ? 'minor' : 'major'}`;
 }

@@ -6,7 +6,7 @@
 // browser's local store ("same model, smaller reach"). API keys are never here.
 // ---------------------------------------------------------------------------
 
-import type { Commit, Scene, CustomDirective, ProjectMeta } from '../types';
+import type { Commit, Scene, CustomDirective, ProjectMeta, MaestroEffort } from '../types';
 
 export interface ProjectBlob {
   id: string;
@@ -19,6 +19,7 @@ export interface ProjectBlob {
   seed: number;
   voiceState: Record<string, { muted: boolean; solo: boolean }>;
   customDirectives: CustomDirective[];
+  effort?: MaestroEffort; // per-project effort default (spec §12.4)
   updated: number;
 }
 

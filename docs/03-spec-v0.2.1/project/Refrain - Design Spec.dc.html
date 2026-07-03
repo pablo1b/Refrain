@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: #FAF8F2; }
+  @keyframes refrSweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes refrPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @page { size: letter; margin: 0; }
+  @media print {
+    html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { margin: 0; padding: 0; }
+    .doc { max-width: none !important; margin: 0 !important; padding: 0 0.6in !important; }
+    .hdr-space, .ftr-space { display: table-cell; height: 0.6in; }
+    .screen-only { display: none !important; }
+    h1,h2,h3,h4 { break-after: avoid; }
+    figure, pre, blockquote, .keepwhole { break-inside: avoid; }
+    p, li { orphans: 3; widows: 3; }
+  }
+  .secnav { display: none; }
+  @media (min-width: 1280px) { .secnav { display: flex !important; } }
+</style>
+</helmet>
+
+<main class="doc" style="font-family:'Hanken Grotesk',system-ui,sans-serif; color:#1A1712; max-width:1080px; margin:0 auto; padding:0 clamp(20px,4vw,56px) 120px; background:#FAF8F2; -webkit-font-smoothing:antialiased; position:relative;">
+
+  <nav class="secnav screen-only" style="position:fixed; top:50%; left:calc(50vw - 624px); transform:translateY(-50%); z-index:40; flex-direction:column; gap:9px; font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.04em; width:78px;">
+    <a href="#concept" style="color:#847C6E; text-decoration:none;">01 · concept</a>
+    <a href="#principles" style="color:#847C6E; text-decoration:none;">02 · principles</a>
+    <a href="#people" style="color:#847C6E; text-decoration:none;">03 · people</a>
+    <a href="#anatomy" style="color:#847C6E; text-decoration:none;">04 · workspace</a>
+    <a href="#cycle" style="color:#847C6E; text-decoration:none;">05 · the cycle</a>
+    <a href="#maestro" style="color:#847C6E; text-decoration:none;">06 · the maestro</a>
+    <a href="#screens" style="color:#847C6E; text-decoration:none;">07 · screens</a>
+    <a href="#flows" style="color:#847C6E; text-decoration:none;">08 · flows</a>
+    <a href="#craft" style="color:#847C6E; text-decoration:none;">09 · craft</a>
+    <a href="#system" style="color:#847C6E; text-decoration:none;">10 · system</a>
+    <a href="#roadmap" style="color:#847C6E; text-decoration:none;">11 · open</a>
+  </nav>
+
+  <table class="doc-frame" role="presentation" style="width:100%; border-collapse:collapse;">
+  <thead><tr><td class="hdr-space" style="display:none; padding:0;"></td></tr></thead>
+  <tbody><tr><td style="padding:0;">
+
+  <!-- ============================ COVER ============================ -->
+  <header style="padding:96px 0 0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap; padding-bottom:28px; border-bottom:1.5px solid #1A1712;">
+      <div style="display:flex; align-items:center; gap:14px;">
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+          <circle cx="17" cy="17" r="15.5" stroke="#1A1712" stroke-width="1.4"/>
+          <circle cx="17" cy="17" r="10" stroke="#B86B12" stroke-width="1.4"/>
+          <circle cx="17" cy="17" r="4.5" stroke="#1A1712" stroke-width="1.4"/>
+          <line x1="17" y1="17" x2="17" y2="2.5" stroke="#B86B12" stroke-width="1.6"/>
+          <circle cx="17" cy="17" r="1.7" fill="#1A1712"/>
+        </svg>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.34em; text-transform:uppercase; color:#1A1712;">Refrain</span>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:#847C6E;">Design specification · v0.1 · June 2026</span>
+    </div>
+
+    <p style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.26em; text-transform:uppercase; color:#B86B12; margin:54px 0 18px;">An AI-native live-coding music IDE, built on Strudel</p>
+    <h1 style="font-family:'Spectral',serif; font-weight:700; font-size:clamp(52px,8.4vw,108px); line-height:.96; letter-spacing:-.02em; margin:0; max-width:14ch;">Compose the loop &mdash; by hand or by intention.</h1>
+
+    <p style="font-family:'Spectral',serif; font-weight:400; font-size:clamp(18px,2.3vw,23px); line-height:1.5; color:#4A453B; max-width:60ch; margin:34px 0 0;">Refrain is a desktop IDE where a <em>Strudel score</em> and a <em>musical conversation</em> are two views of one composition. Type TidalCycles-style patterns directly, or speak to the Maestro in plain musical language &mdash; <span style="font-style:italic; color:#1A1712;">crescendo, half-time the bass, reharmonise in Dorian</span> &mdash; and watch the code change, audition it on the next downbeat, and accept it. Every AI action is a real, inspectable edit. Nothing is a black box.</p>
+
+    <div style="display:flex; gap:0; flex-wrap:wrap; margin-top:56px; border-top:1px solid #E7E1D4;">
+      <div style="flex:1 1 200px; padding:20px 24px 20px 0; border-right:1px solid #E7E1D4;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:#847C6E; margin-bottom:8px;">Platform</div>
+        <div style="font-size:14px; line-height:1.5; color:#1A1712;">Standalone desktop app (Tauri). Local-first. Reuses the real Strudel CodeMirror REPL.</div>
+      </div>
+      <div style="flex:1 1 200px; padding:20px 24px; border-right:1px solid #E7E1D4;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:#847C6E; margin-bottom:8px;">Sound</div>
+        <div style="font-size:14px; line-height:1.5; color:#1A1712;">Pure Strudel / Web Audio (superdough). Offline-capable. Your samples & patches on disk.</div>
+      </div>
+      <div style="flex:1 1 200px; padding:20px 0 20px 24px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:#847C6E; margin-bottom:8px;">Intelligence</div>
+        <div style="font-size:14px; line-height:1.5; color:#1A1712;">Bring-your-own-key. Anthropic · OpenAI · Google · local Ollama, routed by task.</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================ 01 CONCEPT ============================ -->
+  <section id="concept" style="margin-top:104px;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:10px;">01</div>
+      <div>
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(30px,4vw,44px); line-height:1.05; letter-spacing:-.018em; margin:0 0 28px; max-width:18ch;">Intent and code are two views of the same score.</h2>
+        <p style="font-size:16.5px; line-height:1.7; color:#322E27; max-width:68ch; margin:0 0 18px;">Strudel made algorithmic music playable in a browser, but a gap remains. For a trained musician, the distance between <em>what they hear in their head</em> and the pattern syntax that produces it is wide. For a fluent live-coder mid-performance, hand-editing every nuance is slow when the room is waiting. Refrain closes the gap from both sides without taking the instrument away from either player.</p>
+        <p style="font-size:16.5px; line-height:1.7; color:#322E27; max-width:68ch; margin:0 0 18px;">The premise is simple and strict: <strong>the code is always the score.</strong> When you ask the Maestro to &ldquo;make the hats swing,&rdquo; it doesn&rsquo;t render audio behind your back &mdash; it writes a diff against your actual pattern, shows you the lines it touched, auditions the change on the next cycle, and waits for your nod. You can read everything it does. You can edit it afterward. You can undo it in one keystroke. The AI is a second pair of hands on the same instrument, never a vending machine bolted to the side.</p>
+        <p style="font-size:16.5px; line-height:1.7; color:#322E27; max-width:68ch; margin:0;">That single decision &mdash; <em>every AI action is a visible, reversible edit to code you own</em> &mdash; is what makes Refrain trustworthy enough to use on stage and rigorous enough to compose with.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 02 PRINCIPLES ============================ -->
+  <section id="principles" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">02</div>
+      <div style="width:100%;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 36px;">Six principles</h2>
+
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:0; border-top:1px solid #E7E1D4;">
+          <div style="padding:26px 28px 26px 0; border-bottom:1px solid #E7E1D4; border-right:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">i.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">The code is the score, always.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Every AI action produces visible, reversible code &mdash; never hidden state. If you can hear it, you can read it, and you can change it by hand.</p>
+          </div>
+          <div style="padding:26px 0 26px 28px; border-bottom:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">ii.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">Two hands, one instrument.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Typing and talking are equal inputs, interleaved freely. The Maestro proposes; it never seizes the cursor or stops you mid-phrase.</p>
+          </div>
+          <div style="padding:26px 28px 26px 0; border-bottom:1px solid #E7E1D4; border-right:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">iii.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">Nothing breaks the sound.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Edits are validated and staged, then auditioned at a cycle boundary before they touch the running mix. The transport never stutters. Panic is one key away.</p>
+          </div>
+          <div style="padding:26px 0 26px 28px; border-bottom:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">iv.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">Speak music, not prompts.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Commands are musical directives &mdash; <em>crescendo, rubato, cantabile, stretto</em> &mdash; with defined, bounded behaviour. Not vague chat that guesses.</p>
+          </div>
+          <div style="padding:26px 28px 26px 0; border-bottom:1px solid #E7E1D4; border-right:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">v.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">Everything branches & rewinds.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Time-travel the score, fork variations, A/B them against the live mix. Composition is a tree you explore, not a line you erase.</p>
+          </div>
+          <div style="padding:26px 0 26px 28px; border-bottom:1px solid #E7E1D4;">
+            <div style="font-family:'Spectral',serif; font-style:italic; font-size:38px; color:#B86B12; line-height:1; margin-bottom:14px;">vi.</div>
+            <h3 style="font-size:18px; font-weight:700; margin:0 0 8px;">Local-first; your keys, your sound.</h3>
+            <p style="font-size:14.5px; line-height:1.62; color:#544E44; margin:0;">Audio runs offline on Web Audio. Bring your own model keys. Samples, patches and history live on your disk &mdash; a gig laptop owes nothing to the network.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 03 PEOPLE ============================ -->
+  <section id="people" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">03</div>
+      <div style="width:100%;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">Three players</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 36px;">Refrain optimises for three people at once. The tension between them &mdash; speed vs. rigour vs. literacy &mdash; is the design&rsquo;s most productive constraint.</p>
+
+        <div style="display:flex; flex-wrap:wrap; gap:0; border:1px solid #E7E1D4;">
+          <div style="flex:1 1 240px; padding:28px; border-right:1px solid #E7E1D4;">
+            <div style="width:44px; height:44px; border-radius:50%; background:#C7F24A; display:flex; align-items:center; justify-content:center; font-family:'Spectral',serif; font-weight:700; font-size:20px; color:#1A1712; margin-bottom:18px;">V</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 2px;">Vera &mdash; the live-coder</h3>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; margin-bottom:14px;">algoraves · improvisation</div>
+            <p style="font-size:14px; line-height:1.6; color:#544E44; margin:0 0 12px;">Performs from a dark stage. Thinks in cycles and energy curves. Will type fast, then talk fast when her hands can&rsquo;t keep up with the room.</p>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#B86B12; margin-bottom:6px;">Needs</div>
+            <p style="font-size:13.5px; line-height:1.55; color:#322E27; margin:0;">Cycle-quantised edits that never drop the beat · a panic / hush key · huge legible visuals · instant forks to gamble on.</p>
+          </div>
+          <div style="flex:1 1 240px; padding:28px; border-right:1px solid #E7E1D4;">
+            <div style="width:44px; height:44px; border-radius:50%; background:#F2A007; display:flex; align-items:center; justify-content:center; font-family:'Spectral',serif; font-weight:700; font-size:20px; color:#1A1712; margin-bottom:18px;">J</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 2px;">Jonas &mdash; the musician, new to code</h3>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; margin-bottom:14px;">conservatory pianist</div>
+            <p style="font-size:14px; line-height:1.6; color:#544E44; margin:0 0 12px;">Reads a score at sight, hears harmony in colour, writes code haltingly. Knows exactly what he wants and lacks only the syntax to say it.</p>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#B86B12; margin-bottom:6px;">Needs</div>
+            <p style="font-size:13.5px; line-height:1.55; color:#322E27; margin:0;">The notation bridge · musical directives in his own vocabulary · &ldquo;explain this line as music&rdquo; · theory operations that respect the key.</p>
+          </div>
+          <div style="flex:1 1 240px; padding:28px;">
+            <div style="width:44px; height:44px; border-radius:50%; background:#6AA0FF; display:flex; align-items:center; justify-content:center; font-family:'Spectral',serif; font-weight:700; font-size:20px; color:#0D0D11; margin-bottom:18px;">M</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 2px;">Mara &mdash; the producer / composer</h3>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; margin-bottom:14px;">studio · arrangement</div>
+            <p style="font-size:14px; line-height:1.6; color:#544E44; margin:0 0 12px;">Builds pieces over weeks across many files. Designs her own patches and sample banks. Cares about structure, revision history, and stems.</p>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#B86B12; margin-bottom:6px;">Needs</div>
+            <p style="font-size:13.5px; line-height:1.55; color:#322E27; margin:0;">Multi-file projects · the patch designer & sample foundry · an arrangement timeline · provenance for every generated part.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 04 ANATOMY ============================ -->
+  <section id="anatomy" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">04</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">Anatomy of the workspace</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 30px;">Four surfaces around one transport. The <strong>Score</strong> is the real Strudel editor &mdash; nothing about hand-coding changes. Everything else is arranged so the other two players (the Maestro and your ears) are always within a glance and a keystroke.</p>
+
+        <!-- ===== DARK WORKSPACE FIGURE ===== -->
+        <figure class="keepwhole" style="margin:0 0 14px;">
+        <div style="position:relative; border-radius:13px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 30px 70px -30px rgba(0,0,0,.5); font-family:'Hanken Grotesk',sans-serif;">
+
+          <!-- titlebar -->
+          <div style="display:flex; align-items:center; gap:14px; height:46px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27;">
+            <div style="display:flex; gap:7px;"><span style="width:11px;height:11px;border-radius:50%;background:#2A2A33;"></span><span style="width:11px;height:11px;border-radius:50%;background:#2A2A33;"></span><span style="width:11px;height:11px;border-radius:50%;background:#2A2A33;"></span></div>
+            <svg width="17" height="17" viewBox="0 0 34 34" fill="none" style="margin-left:6px;"><circle cx="17" cy="17" r="15.5" stroke="#4A4A55" stroke-width="1.6"/><circle cx="17" cy="17" r="9" stroke="#C7F24A" stroke-width="1.6"/><line x1="17" y1="17" x2="17" y2="3" stroke="#C7F24A" stroke-width="1.8"/><circle cx="17" cy="17" r="2" fill="#E8E6DF"/></svg>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F;">nightjar / <span style="color:#E8E6DF;">set&mdash;02.refrain</span></span>
+            <!-- transport -->
+            <div style="margin:0 auto; display:flex; align-items:center; gap:14px; background:#16161C; border:1px solid #26262F; border-radius:8px; padding:5px 12px;">
+              <span style="width:0;height:0;border-left:9px solid #C7F24A; border-top:6px solid transparent; border-bottom:6px solid transparent;"></span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#C7F24A;">cycle 37</span>
+              <span style="width:1px; height:14px; background:#2A2A33;"></span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">120 <span style="color:#6E6A60;">bpm</span></span>
+              <span style="width:1px; height:14px; background:#2A2A33;"></span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F;">cps 0.5</span>
+            </div>
+            <!-- right cluster -->
+            <div style="display:flex; align-items:center; gap:9px;">
+              <span style="display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#C9C7BF; background:#16161C; border:1px solid #26262F; border-radius:6px; padding:4px 9px;"><span style="width:6px;height:6px;border-radius:50%;background:#F2A007;"></span>Claude Sonnet</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F; border:1px solid #26262F; border-radius:6px; padding:4px 8px;">◐ theme</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#0D0D11; background:#FF5C5C; border-radius:6px; padding:4px 10px; font-weight:700;">PANIC</span>
+            </div>
+          </div>
+
+          <!-- main grid -->
+          <div style="display:grid; grid-template-columns:188px minmax(0,1fr) 312px; min-height:392px;">
+
+            <!-- SHELF -->
+            <div style="border-right:1px solid #1A1A21; background:#0B0B0F; padding:0;">
+              <div style="display:flex; gap:0; border-bottom:1px solid #1A1A21; font-family:'JetBrains Mono',monospace; font-size:10px;">
+                <span style="flex:1; text-align:center; padding:9px 0; color:#E8E6DF; border-bottom:2px solid #C7F24A;">OUTLINE</span>
+                <span style="flex:1; text-align:center; padding:9px 0; color:#6E6A60;">FILES</span>
+                <span style="flex:1; text-align:center; padding:9px 0; color:#6E6A60;">PACKS</span>
+              </div>
+              <div style="padding:14px 12px;">
+                <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.16em; color:#5A574F; margin-bottom:10px;">VOICES &mdash; 4</div>
+                <div style="display:flex; flex-direction:column; gap:3px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+                  <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#6AA0FF;"></span><span style="color:#C9C7BF;">$drums</span><span style="margin-left:auto; color:#5A574F; font-size:10px;">S</span></div>
+                  <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px; background:#15160F; border:1px solid #2C3315;"><span style="width:7px;height:7px;border-radius:2px;background:#C7F24A;"></span><span style="color:#E8E6DF;">$hats</span><span style="margin-left:auto; color:#C7F24A; font-size:10px;">▸</span></div>
+                  <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#C58CF2;"></span><span style="color:#C9C7BF;">$bass</span></div>
+                  <div style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px;"><span style="width:7px;height:7px;border-radius:2px;background:#5FD3B0;"></span><span style="color:#C9C7BF;">$pad</span></div>
+                </div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.16em; color:#5A574F; margin:18px 0 10px;">PATCHES</div>
+                <div style="display:flex; flex-direction:column; gap:3px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#8A887F;">
+                  <div style="padding:5px 8px;">~ warm&middot;pad</div>
+                  <div style="padding:5px 8px;">~ acid&middot;303</div>
+                </div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.16em; color:#5A574F; margin:18px 0 10px;">SAMPLES</div>
+                <div style="display:flex; flex-direction:column; gap:3px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#8A887F;">
+                  <div style="padding:5px 8px;">▦ rhodes&middot;Fm</div>
+                  <div style="padding:5px 8px;">▦ TR909</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SCORE -->
+            <div style="background:#0D0D11; position:relative; min-width:0; overflow:hidden;">
+              <div style="display:flex; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.92;">
+                <div style="padding:16px 0 16px 0; text-align:right; color:#3C3A34; user-select:none; min-width:34px;">
+                  1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14
+                </div>
+                <pre style="margin:0; padding:16px 16px 16px 14px; white-space:pre; overflow:hidden; flex:1;"><span style="color:#6B675E; font-style:italic;">// nightjar — set 02</span>
+<span style="color:#6AA0FF;">setcps</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">0.5</span><span style="color:#8E8B82;">)</span>
+
+<span style="color:#5FD3B0;">$drums</span><span style="color:#8E8B82;">:</span> <span style="color:#6AA0FF;">s</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"bd*2, ~ sd"</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">bank</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"RolandTR909"</span><span style="color:#8E8B82;">)</span>
+<div style="position:relative; margin:0 -16px 0 -14px; padding:0 16px 0 14px; background:rgba(199,242,74,.07); border-left:2px solid #C7F24A;"><span style="color:#5FD3B0;">$hats</span><span style="color:#8E8B82;">:</span>  <span style="color:#6AA0FF;">s</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"hh*8"</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">gain</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"0.4 0.7"</span><span style="color:#8E8B82;">)</span>            <span style="color:#C7F24A; font-size:10px;">▸ playing</span>
+       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">pan</span><span style="color:#8E8B82;">(</span><span style="color:#6AA0FF;">sine</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">range</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">0.3</span><span style="color:#8E8B82;">,</span><span style="color:#C58CF2;">0.7</span><span style="color:#8E8B82;">))</span></div>
+<span style="color:#5FD3B0;">$bass</span><span style="color:#8E8B82;">:</span>  <span style="color:#6AA0FF;">note</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"c2 eb2 g2 c3"</span><span style="color:#8E8B82;">)</span>
+       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">s</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"sawtooth"</span><span style="color:#8E8B82;">)</span>
+       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">lpf</span><span style="color:#8E8B82;">(</span><span style="color:#6AA0FF;">sine</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">range</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">300</span><span style="color:#8E8B82;">,</span><span style="color:#C58CF2;">1200</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">slow</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">4</span><span style="color:#8E8B82;">))</span>
+
+<span style="color:#5FD3B0;">$pad</span><span style="color:#8E8B82;">:</span>   <span style="color:#6AA0FF;">note</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"&lt;Cm7 Abmaj7&gt;"</span><span style="color:#8E8B82;">)</span>
+       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">s</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"warm·pad"</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">room</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">0.3</span><span style="color:#8E8B82;">)</span>
+       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">slow</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">2</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">gain</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">0.5</span><span style="color:#8E8B82;">)</span></pre>
+              </div>
+              <!-- inline ⌘K hint -->
+              <div style="position:absolute; left:48px; bottom:14px; display:flex; align-items:center; gap:8px; background:#16161C; border:1px solid #2A2A33; border-radius:7px; padding:6px 11px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;"><span style="color:#F2A007;">⌘K</span> ask the Maestro inline</div>
+            </div>
+
+            <!-- MAESTRO -->
+            <div style="border-left:1px solid #1A1A21; background:#0B0B0F; display:flex; flex-direction:column;">
+              <div style="display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid #1A1A21;">
+                <span style="font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.18em; color:#F2A007;">MAESTRO</span>
+                <span style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:#5A574F;">Sonnet · fast</span>
+              </div>
+              <div style="flex:1; padding:14px; display:flex; flex-direction:column; gap:14px; overflow:hidden;">
+                <!-- user turn -->
+                <div style="align-self:flex-end; max-width:88%; background:#1A1A21; border-radius:9px 9px 2px 9px; padding:9px 12px; font-size:12.5px; line-height:1.5; color:#E8E6DF;">make the hats swing &amp; bring the bass down an octave</div>
+                <!-- maestro turn -->
+                <div style="display:flex; flex-direction:column; gap:9px;">
+                  <div style="max-width:92%; background:#15140E; border:1px solid #3A3115; border-radius:9px 9px 9px 2px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#D8D5CB;">Two edits staged. Swing via <span style="font-family:'JetBrains Mono',monospace; color:#E0A75C;">.swingBy(1/3,8)</span> on <span style="color:#F2A007;">$hats</span>, and <span style="color:#F2A007;">$bass</span> down to octave 1. Auditioning on cycle 38.</div>
+                  <div style="display:flex; gap:7px;">
+                    <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#0D0D11; background:#C7F24A; border-radius:5px; padding:5px 11px; font-weight:700;">Accept ⏎</span>
+                    <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#C9C7BF; border:1px solid #2A2A33; border-radius:5px; padding:5px 11px;">Reject</span>
+                    <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#8A887F; border:1px solid #2A2A33; border-radius:5px; padding:5px 9px;">▣ diff</span>
+                  </div>
+                </div>
+              </div>
+              <div style="padding:11px 12px; border-top:1px solid #1A1A21;">
+                <div style="display:flex; align-items:center; gap:8px; background:#121217; border:1px solid #26262F; border-radius:8px; padding:8px 11px;">
+                  <span style="color:#5A574F; font-size:13px;">▷</span>
+                  <span style="font-family:'Hanken Grotesk'; font-size:12px; color:#5A574F;">Speak music, or / for directives…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STAGE -->
+          <div style="display:grid; grid-template-columns:170px minmax(0,1fr); border-top:1px solid #1F1F27; background:#0A0A0D;">
+            <div style="padding:14px; display:flex; align-items:center; justify-content:center; border-right:1px solid #1A1A21;">
+              <svg width="118" height="118" viewBox="0 0 160 160" fill="none">
+                <circle cx="80" cy="80" r="62" stroke="#1F1F27" stroke-width="1"/>
+                <circle cx="80" cy="80" r="48" stroke="#1F1F27" stroke-width="1"/>
+                <circle cx="80" cy="80" r="34" stroke="#1F1F27" stroke-width="1"/>
+                <circle cx="80" cy="80" r="20" stroke="#1F1F27" stroke-width="1"/>
+                <!-- drums (r62) -->
+                <circle cx="80" cy="18" r="3" fill="#6AA0FF"/><circle cx="80" cy="142" r="3" fill="#6AA0FF"/>
+                <!-- hats (r48) 8 ticks -->
+                <circle cx="80" cy="32" r="2.4" fill="#C7F24A"/><circle cx="113.9" cy="46" r="2.4" fill="#C7F24A"/><circle cx="128" cy="80" r="2.4" fill="#C7F24A"/><circle cx="113.9" cy="114" r="2.4" fill="#C7F24A"/><circle cx="80" cy="128" r="2.4" fill="#C7F24A"/><circle cx="46.1" cy="114" r="2.4" fill="#C7F24A"/><circle cx="32" cy="80" r="2.4" fill="#C7F24A"/><circle cx="46.1" cy="46" r="2.4" fill="#C7F24A"/>
+                <!-- bass (r34) -->
+                <circle cx="80" cy="46" r="2.6" fill="#C58CF2"/><circle cx="114" cy="80" r="2.6" fill="#C58CF2"/><circle cx="80" cy="114" r="2.6" fill="#C58CF2"/><circle cx="46" cy="80" r="2.6" fill="#C58CF2"/>
+                <!-- pad (r20) -->
+                <circle cx="80" cy="60" r="2.6" fill="#5FD3B0"/>
+                <!-- playhead -->
+                <g style="transform-origin:80px 80px; animation:refrSweep 8s linear infinite;">
+                  <line x1="80" y1="80" x2="80" y2="12" stroke="#C7F24A" stroke-width="1.6"/>
+                  <circle cx="80" cy="12" r="3.4" fill="#C7F24A"/>
+                </g>
+                <circle cx="80" cy="80" r="3" fill="#E8E6DF"/>
+              </svg>
+            </div>
+            <div style="padding:14px 16px; display:flex; flex-direction:column; justify-content:center; gap:9px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:2px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.16em; color:#5A574F;">THE STAGE — 4 VOICES</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#5A574F;">cpu 12% · –6.2 dB</span></div>
+              <!-- meters -->
+              <div style="display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11px;"><span style="width:54px; color:#C9C7BF;">$drums</span><div style="flex:1; height:5px; border-radius:3px; background:#16161C; overflow:hidden;"><div style="width:72%; height:100%; background:#6AA0FF;"></div></div><span style="color:#5A574F; width:20px;">S M</span></div>
+              <div style="display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11px;"><span style="width:54px; color:#C9C7BF;">$hats</span><div style="flex:1; height:5px; border-radius:3px; background:#16161C; overflow:hidden;"><div style="width:48%; height:100%; background:#C7F24A;"></div></div><span style="color:#5A574F; width:20px;">S M</span></div>
+              <div style="display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11px;"><span style="width:54px; color:#C9C7BF;">$bass</span><div style="flex:1; height:5px; border-radius:3px; background:#16161C; overflow:hidden;"><div style="width:61%; height:100%; background:#C58CF2;"></div></div><span style="color:#5A574F; width:20px;">S M</span></div>
+              <div style="display:flex; align-items:center; gap:10px; font-family:'JetBrains Mono',monospace; font-size:11px;"><span style="width:54px; color:#C9C7BF;">$pad</span><div style="flex:1; height:5px; border-radius:3px; background:#16161C; overflow:hidden;"><div style="width:34%; height:100%; background:#5FD3B0;"></div></div><span style="color:#5A574F; width:20px;">S M</span></div>
+            </div>
+          </div>
+        </div>
+        </figure>
+
+        <!-- legend -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:0 24px; border-top:1px solid #E7E1D4; padding-top:16px; margin-bottom:8px;">
+          <div style="padding:8px 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">A · The Shelf</span><div style="font-size:13px; color:#544E44; line-height:1.5;">Project files, the live <em>voice outline</em>, patches & sample packs.</div></div>
+          <div style="padding:8px 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">B · The Score</span><div style="font-size:13px; color:#544E44; line-height:1.5;">The real Strudel CodeMirror editor — active-event highlight, inline ⌘K.</div></div>
+          <div style="padding:8px 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">C · The Maestro</span><div style="font-size:13px; color:#544E44; line-height:1.5;">Conversational pair. Every turn becomes a diff, a variation, or an answer.</div></div>
+          <div style="padding:8px 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">D · The Stage</span><div style="font-size:13px; color:#544E44; line-height:1.5;">The Cycle clock, per-voice meters, solo/mute, CPU & headroom.</div></div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:4px;">Fig. 4.1 — The workspace, dark theme. Lime marks anything <em>live</em>; amber marks the Maestro. Code colour is its own cool palette so the two never blur.</figcaption>
+
+        <!-- ===== LIGHT THEME PROOF ===== -->
+        <h3 style="font-size:18px; font-weight:700; margin:44px 0 6px;">Themeable, not skinned</h3>
+        <p style="font-size:15.5px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 22px;">Dark is the default &mdash; it belongs on a stage and at 2 a.m. The light theme is the same layout for daylight studio work, with the colour language preserved: <em>live</em> stays a deep lime, the Maestro stays amber.</p>
+
+        <figure class="keepwhole" style="margin:0;">
+        <div style="border-radius:13px; overflow:hidden; background:#F4F2EC; border:1px solid #E2DCCF; box-shadow:0 18px 44px -26px rgba(0,0,0,.28); font-family:'Hanken Grotesk',sans-serif;">
+          <div style="display:flex; align-items:center; gap:12px; height:42px; padding:0 14px; background:#FBFAF6; border-bottom:1px solid #E2DCCF;">
+            <svg width="16" height="16" viewBox="0 0 34 34" fill="none"><circle cx="17" cy="17" r="15.5" stroke="#B5AE9E" stroke-width="1.6"/><circle cx="17" cy="17" r="9" stroke="#5E7E14" stroke-width="1.6"/><line x1="17" y1="17" x2="17" y2="3" stroke="#5E7E14" stroke-width="1.8"/><circle cx="17" cy="17" r="2" fill="#211E18"/></svg>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#7C7568;">nightjar / <span style="color:#211E18;">set—02</span></span>
+            <div style="margin:0 auto; display:flex; align-items:center; gap:12px; background:#FFFFFF; border:1px solid #E2DCCF; border-radius:7px; padding:4px 11px;"><span style="width:0;height:0;border-left:8px solid #5E7E14;border-top:5px solid transparent;border-bottom:5px solid transparent;"></span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5E7E14;">cycle 37</span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#211E18;">120 bpm</span></div>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#211E18; background:#FFFFFF; border:1px solid #E2DCCF; border-radius:6px; padding:4px 9px;"><span style="color:#B86B12;">●</span> Claude Sonnet</span>
+          </div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) 264px; min-height:188px;">
+            <div style="background:#FBFAF6; min-width:0; overflow:hidden;">
+              <pre style="margin:0; padding:14px 16px; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.85; white-space:pre; overflow:hidden;"><span style="color:#9A917E; font-style:italic;">// nightjar — set 02</span>
+<span style="color:#0E7C66;">$drums</span><span style="color:#8A8273;">:</span> <span style="color:#2563C9;">s</span><span style="color:#8A8273;">(</span><span style="color:#A8631A;">"bd*2, ~ sd"</span><span style="color:#8A8273;">)</span>
+<div style="margin:0 -16px; padding:0 16px; background:rgba(94,126,20,.1); border-left:2px solid #5E7E14;"><span style="color:#0E7C66;">$hats</span><span style="color:#8A8273;">:</span>  <span style="color:#2563C9;">s</span><span style="color:#8A8273;">(</span><span style="color:#A8631A;">"hh*8"</span><span style="color:#8A8273;">)</span><span style="color:#8A8273;">.</span><span style="color:#2563C9;">swingBy</span><span style="color:#8A8273;">(</span><span style="color:#7A4FC2;">1/3</span><span style="color:#8A8273;">,</span><span style="color:#7A4FC2;">8</span><span style="color:#8A8273;">)</span>    <span style="color:#5E7E14; font-size:10px;">▸ playing</span></div>
+<span style="color:#0E7C66;">$bass</span><span style="color:#8A8273;">:</span>  <span style="color:#2563C9;">note</span><span style="color:#8A8273;">(</span><span style="color:#A8631A;">"c1 eb1 g1 c2"</span><span style="color:#8A8273;">)</span>
+       <span style="color:#8A8273;">.</span><span style="color:#2563C9;">lpf</span><span style="color:#8A8273;">(</span><span style="color:#2563C9;">sine</span><span style="color:#8A8273;">.</span><span style="color:#2563C9;">range</span><span style="color:#8A8273;">(</span><span style="color:#7A4FC2;">300</span><span style="color:#8A8273;">,</span><span style="color:#7A4FC2;">1200</span><span style="color:#8A8273;">))</span></pre>
+            </div>
+            <div style="border-left:1px solid #E2DCCF; background:#FFFFFF; padding:14px; display:flex; flex-direction:column; gap:11px;">
+              <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.18em; color:#B86B12;">MAESTRO</span>
+              <div style="align-self:flex-end; background:#F0EDE4; border-radius:8px 8px 2px 8px; padding:8px 11px; font-size:12px; color:#211E18; max-width:88%;">make the hats swing</div>
+              <div style="background:#FBF4E6; border:1px solid #EAD9B4; border-radius:8px 8px 8px 2px; padding:9px 11px; font-size:12px; line-height:1.5; color:#3A352C; max-width:92%;">Done — <span style="font-family:'JetBrains Mono',monospace; color:#A8631A;">.swingBy(1/3,8)</span> on <span style="color:#B86B12;">$hats</span>. Auditioning now.</div>
+              <div style="display:flex; gap:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#FBFAF6; background:#5E7E14; border-radius:5px; padding:4px 10px; font-weight:700;">Accept ⏎</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#544E44; border:1px solid #E2DCCF; border-radius:5px; padding:4px 10px;">Reject</span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 4.2 — Light theme. Same surfaces, same colour grammar, daylight values.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 05 THE CYCLE ============================ -->
+  <section id="cycle" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">05</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">The Cycle &mdash; the signature instrument</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 30px;">Strudel thinks in cycles, not bars-and-beats. Refrain makes the cycle a first-class object you can <em>see, point at, and command</em>. The Cycle clock is a radial reading of one cycle: each voice is a ring, each event a tick, and a single playhead sweeps the present. It is the canonical answer to &ldquo;what is happening right now,&rdquo; and the target for any spatial instruction.</p>
+
+        <figure class="keepwhole" style="margin:0 0 36px; display:grid; grid-template-columns:minmax(220px,300px) 1fr; gap:clamp(20px,4vw,48px); align-items:center; background:#0D0D11; border:1px solid #23232B; border-radius:13px; padding:clamp(20px,3vw,38px);">
+          <div style="display:flex; justify-content:center;">
+            <svg width="240" height="240" viewBox="0 0 200 200" fill="none">
+              <circle cx="100" cy="100" r="80" stroke="#1F1F27" stroke-width="1"/>
+              <circle cx="100" cy="100" r="62" stroke="#1F1F27" stroke-width="1"/>
+              <circle cx="100" cy="100" r="44" stroke="#1F1F27" stroke-width="1"/>
+              <circle cx="100" cy="100" r="26" stroke="#1F1F27" stroke-width="1"/>
+              <!-- quarter guides -->
+              <line x1="100" y1="14" x2="100" y2="22" stroke="#33333D" stroke-width="1"/><line x1="186" y1="100" x2="178" y2="100" stroke="#33333D" stroke-width="1"/><line x1="100" y1="186" x2="100" y2="178" stroke="#33333D" stroke-width="1"/><line x1="14" y1="100" x2="22" y2="100" stroke="#33333D" stroke-width="1"/>
+              <!-- drums r80 -->
+              <circle cx="100" cy="20" r="3.4" fill="#6AA0FF"/><circle cx="100" cy="180" r="3.4" fill="#6AA0FF"/>
+              <!-- hats r62 (8) -->
+              <circle cx="100" cy="38" r="2.8" fill="#C7F24A"/><circle cx="143.8" cy="56.2" r="2.8" fill="#C7F24A"/><circle cx="162" cy="100" r="2.8" fill="#C7F24A"/><circle cx="143.8" cy="143.8" r="2.8" fill="#C7F24A"/><circle cx="100" cy="162" r="2.8" fill="#C7F24A"/><circle cx="56.2" cy="143.8" r="2.8" fill="#C7F24A"/><circle cx="38" cy="100" r="2.8" fill="#C7F24A"/><circle cx="56.2" cy="56.2" r="2.8" fill="#C7F24A"/>
+              <!-- bass r44 (4) -->
+              <circle cx="100" cy="56" r="3" fill="#C58CF2"/><circle cx="144" cy="100" r="3" fill="#C58CF2"/><circle cx="100" cy="144" r="3" fill="#C58CF2"/><circle cx="56" cy="100" r="3" fill="#C58CF2"/>
+              <!-- pad r26 (1) -->
+              <circle cx="100" cy="74" r="3" fill="#5FD3B0"/>
+              <!-- playhead -->
+              <g style="transform-origin:100px 100px; animation:refrSweep 8s linear infinite;">
+                <line x1="100" y1="100" x2="100" y2="16" stroke="#C7F24A" stroke-width="1.8"/>
+                <circle cx="100" cy="16" r="4" fill="#C7F24A"/>
+              </g>
+              <circle cx="100" cy="100" r="3.6" fill="#E8E6DF"/>
+            </svg>
+          </div>
+          <div style="min-width:0;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.18em; color:#5A574F; margin-bottom:16px;">ONE CYCLE · 4 RINGS</div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="display:flex; gap:11px; align-items:baseline;"><span style="width:8px;height:8px;border-radius:2px;background:#6AA0FF; flex:none; transform:translateY(1px);"></span><div><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">$drums</span> <span style="color:#8A887F; font-size:13px;">— outer ring, the structural pulse.</span></div></div>
+              <div style="display:flex; gap:11px; align-items:baseline;"><span style="width:8px;height:8px;border-radius:2px;background:#C7F24A; flex:none; transform:translateY(1px);"></span><div><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">$hats</span> <span style="color:#8A887F; font-size:13px;">— eight even ticks; swing nudges them off-grid, visibly.</span></div></div>
+              <div style="display:flex; gap:11px; align-items:baseline;"><span style="width:8px;height:8px;border-radius:2px;background:#C58CF2; flex:none; transform:translateY(1px);"></span><div><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">$bass</span> <span style="color:#8A887F; font-size:13px;">— four notes on the quarters.</span></div></div>
+              <div style="display:flex; gap:11px; align-items:baseline;"><span style="width:8px;height:8px;border-radius:2px;background:#5FD3B0; flex:none; transform:translateY(1px);"></span><div><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">$pad</span> <span style="color:#8A887F; font-size:13px;">— inner ring, one slow chord every two cycles.</span></div></div>
+            </div>
+            <p style="font-size:13.5px; line-height:1.6; color:#8A887F; margin:20px 0 0; border-top:1px solid #23232B; padding-top:16px;">Point at the clock to scope a command: drag an arc to select &ldquo;the back half&rdquo; and say <em style="color:#C9C7BF;">drop the hats here</em>. The Maestro reads the arc as a time-span and writes a <span style="font-family:'JetBrains Mono',monospace; color:#E0A75C;">.mask()</span>.</p>
+          </div>
+        </figure>
+
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:0; border-top:1px solid #E7E1D4;">
+          <div style="padding:22px 24px 6px 0; border-right:1px solid #E7E1D4;"><h3 style="font-size:16px; font-weight:700; margin:0 0 7px;">It is the clock everything quantises to</h3><p style="font-size:14px; line-height:1.6; color:#544E44; margin:0;">Edits land on the next cycle boundary. The sweep shows you exactly how long until a staged change goes live &mdash; so you can hit it on the phrase.</p></div>
+          <div style="padding:22px 24px 6px 24px; border-right:1px solid #E7E1D4;"><h3 style="font-size:16px; font-weight:700; margin:0 0 7px;">It is a target, not just a readout</h3><p style="font-size:14px; line-height:1.6; color:#544E44; margin:0;">Spatial language &mdash; <em>&ldquo;the first beat,&rdquo; &ldquo;every off-beat,&rdquo; &ldquo;the back half&rdquo;</em> &mdash; resolves to concrete time-spans the Maestro can edit precisely.</p></div>
+          <div style="padding:22px 0 6px 24px;"><h3 style="font-size:16px; font-weight:700; margin:0 0 7px;">It scales to the room</h3><p style="font-size:14px; line-height:1.6; color:#544E44; margin:0;">In Performance mode the clock fills the screen and becomes the show &mdash; legible from the back of a venue, honest about what each voice is doing.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 06 THE MAESTRO ============================ -->
+  <section id="maestro" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">06</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">The Maestro</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 34px;">The Maestro is not a chatbot bolted to an editor. It reads your project as a parsed Strudel tree, reasons about <em>music</em>, and answers in exactly one of three shapes &mdash; each one inspectable, auditioned before it commits, and one keystroke from undo.</p>
+
+        <!-- three response shapes -->
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:40px;">
+          <div style="border:1px solid #E7E1D4; border-top:3px solid #6AA0FF; padding:20px 18px;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.16em; color:#6AA0FF; margin-bottom:10px;">SHAPE 01</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 8px;">A diff</h3>
+            <p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Edits to existing code, hunk by hunk. Used for changes: <em>make the hats swing, darker pad, half-time the bass.</em> You accept or reject each hunk; it auditions live first.</p>
+          </div>
+          <div style="border:1px solid #E7E1D4; border-top:3px solid #F2A007; padding:20px 18px;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.16em; color:#B86B12; margin-bottom:10px;">SHAPE 02</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 8px;">Variation lanes</h3>
+            <p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">New material, offered as 2&ndash;4 forks to audition against the live mix. Used for generation: <em>three ways into the drop.</em> Solo each, tweak one, commit one.</p>
+          </div>
+          <div style="border:1px solid #E7E1D4; border-top:3px solid #5FD3B0; padding:20px 18px;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.16em; color:#0E7C66; margin-bottom:10px;">SHAPE 03</div>
+            <h3 style="font-size:17px; font-weight:700; margin:0 0 8px;">An answer</h3>
+            <p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Explanation or annotation &mdash; no code change. Used for learning: <em>what does this line do, musically?</em> Inline notes attach to the score, dismissable.</p>
+          </div>
+        </div>
+
+        <!-- DIRECTIVES -->
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Directives &mdash; musical verbs as typed commands</h3>
+        <p style="font-size:15.5px; line-height:1.7; color:#544E44; max-width:66ch; margin:0 0 24px;">A vague prompt invites a vague answer. A <strong>directive</strong> is a curated musical term with bounded, reproducible behaviour. The Maestro chooses the <em>targets</em> and the <em>degree</em>; the <em>shape</em> of the transform is known &mdash; so directives are predictable, fast, and cheap enough to route to a small or local model. Type <span style="font-family:'JetBrains Mono',monospace; background:#F0EDE4; padding:1px 6px; border-radius:4px;">/</span> in the Maestro to summon the palette.</p>
+
+        <div style="border:1px solid #E7E1D4; border-radius:10px; overflow:hidden;">
+          <!-- group: dynamics -->
+          <div style="display:grid; grid-template-columns:130px 1fr; border-bottom:1px solid #E7E1D4;">
+            <div style="padding:16px 18px; background:#FBFAF6; border-right:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; color:#B86B12;">DYNAMICS</div>
+            <div style="padding:14px 18px; display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">crescendo</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">ramps .gain over n cycles</span><span style="font-size:13px; color:#847C6E;">— grow into the drop</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">diminuendo</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">gain ↓ + opens space</span><span style="font-size:13px; color:#847C6E;">— pull back for a breakdown</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">sforzando</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">accent one event hard</span><span style="font-size:13px; color:#847C6E;">— punch the downbeat</span></div>
+            </div>
+          </div>
+          <!-- group: tempo / agogics -->
+          <div style="display:grid; grid-template-columns:130px 1fr; border-bottom:1px solid #E7E1D4;">
+            <div style="padding:16px 18px; background:#FBFAF6; border-right:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; color:#B86B12;">AGOGICS</div>
+            <div style="padding:14px 18px; display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">rubato</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">humanises timing (nudge)</span><span style="font-size:13px; color:#847C6E;">— loosen the grid</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">accel. / rit.</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">cps ramps up / down</span><span style="font-size:13px; color:#847C6E;">— a controlled gear-change</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">stretto</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">overlaps entries tighter</span><span style="font-size:13px; color:#847C6E;">— pile the canon up</span></div>
+            </div>
+          </div>
+          <!-- group: articulation -->
+          <div style="display:grid; grid-template-columns:130px 1fr; border-bottom:1px solid #E7E1D4;">
+            <div style="padding:16px 18px; background:#FBFAF6; border-right:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; color:#B86B12;">ARTICULATION</div>
+            <div style="padding:14px 18px; display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">staccato</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">shortens .clip / release</span><span style="font-size:13px; color:#847C6E;">— make it bite</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">legato</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">lengthens + glides</span><span style="font-size:13px; color:#847C6E;">— smooth the line</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">marcato</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">per-event accent map</span><span style="font-size:13px; color:#847C6E;">— march it</span></div>
+            </div>
+          </div>
+          <!-- group: character -->
+          <div style="display:grid; grid-template-columns:130px 1fr;">
+            <div style="padding:16px 18px; background:#FBFAF6; border-right:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; color:#B86B12;">CHARACTER</div>
+            <div style="padding:14px 18px; display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">cantabile</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">smooth gain + voice-lead</span><span style="font-size:13px; color:#847C6E;">— make it sing</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">con fuoco</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">drive, dist, faster LFO</span><span style="font-size:13px; color:#847C6E;">— with fire</span></div>
+              <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:16px; color:#1A1712; min-width:120px;">misterioso</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0E7C66;">reverb, lpf, sparse</span><span style="font-size:13px; color:#847C6E;">— make it haunt</span></div>
+            </div>
+          </div>
+        </div>
+        <p style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; margin:12px 0 0;">Directive packs are extensible — a user can author <em>their own</em> verb (&ldquo;<span style="color:#1A1712;">molto cantabile</span>&rdquo;) and bind it to a transform. The vocabulary is yours.</p>
+
+        <!-- grounding + safety + routing -->
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:0; margin-top:44px; border-top:1.5px solid #1A1712;">
+          <div style="padding:24px 24px 8px 0; border-right:1px solid #E7E1D4;">
+            <h3 style="font-size:16px; font-weight:700; margin:0 0 9px;">Grounded, not guessing</h3>
+            <p style="font-size:14px; line-height:1.62; color:#544E44; margin:0;">The Maestro edits a parsed AST and diffs against real nodes &mdash; it can only change code that exists, and it cites the exact lines it touched. No silent rewrites of your whole file.</p>
+          </div>
+          <div style="padding:24px 24px 8px 24px; border-right:1px solid #E7E1D4;">
+            <h3 style="font-size:16px; font-weight:700; margin:0 0 9px;">Nothing reaches the speakers unvetted</h3>
+            <p style="font-size:14px; line-height:1.62; color:#544E44; margin:0;">Every proposal is parsed and dry-run-rendered before it can audition. A generation that errors stays in its lane and never touches the live pattern. Undo is always one cycle back.</p>
+          </div>
+          <div style="padding:24px 0 8px 24px;">
+            <h3 style="font-size:16px; font-weight:700; margin:0 0 9px;">Routed by task</h3>
+            <p style="font-size:14px; line-height:1.62; color:#544E44; margin:0;">A fast/cheap model handles directives & completions; a strong model handles generation, arrangement and theory; a local model (Ollama) covers offline gigs. You map roles to models.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 07 SCREENS ============================ -->
+  <section id="screens" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">07</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">The composing surfaces</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 40px;">Eight focused surfaces, each opened in context from the workspace. They share the chrome, the colour grammar, and the rule that everything resolves to code you can read.</p>
+
+        <!-- 7.1 INLINE DIFF -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.1 — SEMANTIC EDIT · INLINE DIFF</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Edits arrive as a diff you accept hunk by hunk</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">⌘K on a selection, or a message to the Maestro, stages a diff directly in the Score. It auditions on the next cycle so you hear it before you keep it; accept all with <span style="font-family:'JetBrains Mono',monospace; background:#F0EDE4; padding:1px 5px; border-radius:4px;">⏎</span>, or toggle hunks individually.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.45);">
+          <div style="display:flex; align-items:center; gap:10px; height:40px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">
+            <span style="color:#F2A007;">⌘K</span><span style="color:#C9C7BF;">make the hats swing &amp; drop the bass an octave</span>
+            <span style="margin-left:auto; display:flex; align-items:center; gap:7px; color:#C7F24A;"><span style="width:6px;height:6px;border-radius:50%;background:#C7F24A; animation:refrPulse 1.6s ease-in-out infinite;"></span>auditioning · commits on downbeat</span>
+          </div>
+          <div style="display:flex; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.95;">
+            <div style="padding:16px 0; text-align:right; color:#3C3A34; min-width:34px; user-select:none;">5<br>6<br>7<br>8<br>9<br>10</div>
+            <pre style="margin:0; padding:16px 16px 16px 14px; white-space:pre; overflow:hidden; flex:1;"><span style="color:#5FD3B0;">$hats</span><span style="color:#8E8B82;">:</span>  <span style="color:#6AA0FF;">s</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"hh*8"</span><span style="color:#8E8B82;">)</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">gain</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"0.4 0.7"</span><span style="color:#8E8B82;">)</span>
+<div style="margin:0 -16px; padding:1px 16px; background:rgba(255,92,92,.09); border-left:2px solid #FF5C5C;"><span style="color:#7E5A52;">- </span><span style="color:#7E5A52; text-decoration:line-through;">       .pan(sine.range(0.3,0.7))</span></div><div style="margin:0 -16px; padding:1px 16px; background:rgba(199,242,74,.09); border-left:2px solid #C7F24A;"><span style="color:#8FAE3A;">+ </span>       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">pan</span><span style="color:#8E8B82;">(</span><span style="color:#6AA0FF;">sine</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">range</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">0.3</span><span style="color:#8E8B82;">,</span><span style="color:#C58CF2;">0.7</span><span style="color:#8E8B82;">))</span><span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">swingBy</span><span style="color:#8E8B82;">(</span><span style="color:#C58CF2;">1/3</span><span style="color:#8E8B82;">,</span><span style="color:#C58CF2;">8</span><span style="color:#8E8B82;">)</span></div>
+<span style="color:#5FD3B0;">$bass</span><span style="color:#8E8B82;">:</span>  <span style="color:#6AA0FF;">note</span><span style="color:#8E8B82;">(</span><div style="display:inline"></div><span style="color:#8E8B82;">…</span><span style="color:#8E8B82;">)</span>
+<div style="margin:0 -16px; padding:1px 16px; background:rgba(255,92,92,.09); border-left:2px solid #FF5C5C;"><span style="color:#7E5A52;">- </span>       <span style="color:#7E5A52;">.</span><span style="color:#7E5A52; text-decoration:line-through;">note("c2 eb2 g2 c3")</span></div><div style="margin:0 -16px; padding:1px 16px; background:rgba(199,242,74,.09); border-left:2px solid #C7F24A;"><span style="color:#8FAE3A;">+ </span>       <span style="color:#8E8B82;">.</span><span style="color:#6AA0FF;">note</span><span style="color:#8E8B82;">(</span><span style="color:#E0A75C;">"c1 eb1 g1 c2"</span><span style="color:#8E8B82;">)</span></div></pre>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid #1F1F27; background:#0A0A0D;">
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">2 hunks</span>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#0D0D11; background:#C7F24A; border-radius:6px; padding:6px 13px; font-weight:700;">Accept all ⏎</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#C9C7BF; border:1px solid #2A2A33; border-radius:6px; padding:6px 13px;">Reject all ⌫</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F; border:1px solid #2A2A33; border-radius:6px; padding:6px 11px;">↹ per-hunk</span>
+            </div>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.1 — Cursor-style diff, but cycle-aware: the change is already sounding before you commit it.</figcaption>
+        </figure>
+
+        <!-- 7.2 VARIATION LANES -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.2 — GENERATION · VARIATION LANES</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">New material arrives as lanes you audition against the mix</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">Generation never overwrites. The Maestro returns two to four forks; each solos into the running mix on click, shows its own cycle preview, and can be refined with a follow-up. Commit one into a named scene &mdash; the others stay parked in the variation tree.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.45);">
+          <div style="display:flex; align-items:center; gap:10px; height:40px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:11px;">
+            <span style="color:#F2A007;">MAESTRO</span><span style="color:#C9C7BF;">give me three ways into the drop &mdash; harder each time</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:#1A1A21;">
+            <!-- lane A -->
+            <div style="background:#0D0D11; padding:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">A · <span style="color:#8A887F;">filter sweep</span></span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#5A574F;">2 bars</span></div>
+              <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none" style="margin-bottom:12px;"><path d="M0 17 Q25 6 50 17 T100 17 T150 17 T200 17" stroke="#6AA0FF" stroke-width="1.4" fill="none"/></svg>
+              <pre style="margin:0 0 12px; font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.7; color:#8A887F; white-space:pre-wrap;"><span style="color:#5FD3B0;">$fx</span>: <span style="color:#6AA0FF;">lpf</span>(<span style="color:#6AA0FF;">range</span>(<span style="color:#C58CF2;">200</span>,<span style="color:#C58CF2;">8e3</span>)<br>   .<span style="color:#6AA0FF;">slow</span>(<span style="color:#C58CF2;">2</span>))</pre>
+              <div style="display:flex; gap:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#0D0D11; background:#C7F24A; border-radius:5px; padding:5px 10px; font-weight:700;">▶ solo</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#C9C7BF; border:1px solid #2A2A33; border-radius:5px; padding:5px 10px;">commit</span></div>
+            </div>
+            <!-- lane B (selected) -->
+            <div style="background:#0F100A; padding:16px; box-shadow:inset 0 0 0 1px #2C3315;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">B · <span style="color:#C7F24A;">snare roll</span></span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#C7F24A;">▸ soloing</span></div>
+              <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none" style="margin-bottom:12px;"><g stroke="#C7F24A" stroke-width="1.4"><line x1="10" y1="22" x2="10" y2="12"/><line x1="34" y1="22" x2="34" y2="10"/><line x1="58" y1="22" x2="58" y2="8"/><line x1="82" y1="22" x2="82" y2="6"/><line x1="106" y1="22" x2="106" y2="5"/><line x1="124" y1="22" x2="124" y2="4"/><line x1="140" y1="22" x2="140" y2="3"/><line x1="154" y1="22" x2="154" y2="3"/><line x1="166" y1="22" x2="166" y2="2"/><line x1="178" y1="22" x2="178" y2="2"/><line x1="190" y1="22" x2="190" y2="2"/></g></svg>
+              <pre style="margin:0 0 12px; font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.7; color:#8A887F; white-space:pre-wrap;"><span style="color:#5FD3B0;">$rl</span>: <span style="color:#6AA0FF;">s</span>(<span style="color:#E0A75C;">"sd*[8 16]"</span>)<br>   .<span style="color:#6AA0FF;">gain</span>(<span style="color:#6AA0FF;">range</span>(.<span style="color:#C58CF2;">4</span>,<span style="color:#C58CF2;">1</span>))</pre>
+              <div style="display:flex; gap:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#0D0D11; background:#C7F24A; border-radius:5px; padding:5px 10px; font-weight:700;">▣ soloing</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#0D0D11; background:#F2A007; border-radius:5px; padding:5px 10px; font-weight:700;">commit ⏎</span></div>
+            </div>
+            <!-- lane C -->
+            <div style="background:#0D0D11; padding:16px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;"><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#E8E6DF;">C · <span style="color:#8A887F;">silence→hit</span></span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#5A574F;">1 bar</span></div>
+              <svg width="100%" height="34" viewBox="0 0 200 34" preserveAspectRatio="none" style="margin-bottom:12px;"><line x1="0" y1="17" x2="180" y2="17" stroke="#33333D" stroke-width="1.2"/><line x1="184" y1="28" x2="184" y2="3" stroke="#C58CF2" stroke-width="2"/></svg>
+              <pre style="margin:0 0 12px; font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.7; color:#8A887F; white-space:pre-wrap;"><span style="color:#5FD3B0;">$gp</span>: <span style="color:#6AA0FF;">silence</span>.<span style="color:#6AA0FF;">slow</span>(<span style="color:#C58CF2;">2</span>)<br>   <span style="color:#6AA0FF;">+ </span><span style="color:#6AA0FF;">s</span>(<span style="color:#E0A75C;">"crash"</span>)</pre>
+              <div style="display:flex; gap:6px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#0D0D11; background:#C7F24A; border-radius:5px; padding:5px 10px; font-weight:700;">▶ solo</span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#C9C7BF; border:1px solid #2A2A33; border-radius:5px; padding:5px 10px;">commit</span></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid #1F1F27; background:#0A0A0D; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">
+            <span style="color:#5A574F;">⌥ tree</span><span>3 forks · parked until committed</span>
+            <span style="margin-left:auto; display:flex; align-items:center; gap:8px;"><span style="color:#C9C7BF; border:1px solid #2A2A33; border-radius:6px; padding:5px 11px;">refine B…</span><span style="color:#C9C7BF; border:1px solid #2A2A33; border-radius:6px; padding:5px 11px;">re-roll ↻</span></span>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.2 — Variation lanes. Audition against the live mix, refine the keeper, commit one — the rest stay in the tree.</figcaption>
+        </figure>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 continued -->
+  <section style="margin-top:56px;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div></div>
+      <div style="width:100%; min-width:0;">
+
+        <!-- 7.3 PATCH DESIGNER -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.3 — PATCH DESIGNER</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Design a synth voice as a signal chain &mdash; or describe it</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">Open the Patch Designer on any sound. Tweak the chain by hand on the node graph, or tell the Maestro <em>&ldquo;warmer, more analog, longer tail.&rdquo;</em> Both edit the same thing: a named Strudel signal chain saved to the Shelf and referenced by name in your score. Preview plays on a held note while you turn knobs.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.45);">
+          <div style="display:flex; align-items:center; gap:10px; height:40px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">
+            <span style="color:#5FD3B0;">~ warm·pad</span><span style="color:#5A574F;">patch</span><span style="margin-left:auto; display:flex; align-items:center; gap:6px; color:#C7F24A;"><span style="width:0;height:0;border-left:7px solid #C7F24A;border-top:4px solid transparent;border-bottom:4px solid transparent;"></span>hold C3 to preview</span>
+          </div>
+          <!-- node chain -->
+          <div style="display:flex; align-items:center; gap:0; padding:24px 18px; background:#0B0B0F; overflow-x:auto;">
+            <div style="flex:none; width:96px; text-align:center; border:1px solid #2A2A33; border-radius:8px; padding:11px 6px; background:#13131A;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#6AA0FF;">OSC</div><div style="font-size:11px; color:#C9C7BF; margin-top:3px;">2× saw</div><div style="font-size:10px; color:#5A574F;">detune 12c</div></div>
+            <div style="flex:none; width:26px; height:1px; background:#33333D;"></div>
+            <div style="flex:none; width:96px; text-align:center; border:1px solid #2A2A33; border-radius:8px; padding:11px 6px; background:#13131A;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#C58CF2;">FILTER</div><div style="font-size:11px; color:#C9C7BF; margin-top:3px;">LP 24dB</div><div style="font-size:10px; color:#5A574F;">cut 900</div></div>
+            <div style="flex:none; width:26px; height:1px; background:#33333D;"></div>
+            <div style="flex:none; width:96px; text-align:center; border:1px solid #2A2A33; border-radius:8px; padding:11px 6px; background:#13131A;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#E0A75C;">ENV</div><div style="font-size:11px; color:#C9C7BF; margin-top:3px;">A.4 R2.5</div><div style="font-size:10px; color:#5A574F;">long tail</div></div>
+            <div style="flex:none; width:26px; height:1px; background:#33333D;"></div>
+            <div style="flex:none; width:96px; text-align:center; border:1px solid #3A3115; border-radius:8px; padding:11px 6px; background:#15140E;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#F2A007;">FX +</div><div style="font-size:11px; color:#C9C7BF; margin-top:3px;">room .3</div><div style="font-size:10px; color:#F2A007;">+ chorus</div></div>
+          </div>
+          <!-- knobs + code -->
+          <div style="display:grid; grid-template-columns:1fr 280px; border-top:1px solid #1F1F27;">
+            <div style="padding:16px 18px; display:flex; gap:20px; flex-wrap:wrap; align-items:center;">
+              <div style="text-align:center;"><svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="18" stroke="#2A2A33" stroke-width="3" fill="none"/><path d="M23 23 L23 7" stroke="#C7F24A" stroke-width="2.4" transform="rotate(40 23 23)"/></svg><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8A887F; margin-top:2px;">CUTOFF</div></div>
+              <div style="text-align:center;"><svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="18" stroke="#2A2A33" stroke-width="3" fill="none"/><path d="M23 23 L23 7" stroke="#C7F24A" stroke-width="2.4" transform="rotate(-30 23 23)"/></svg><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8A887F; margin-top:2px;">RES</div></div>
+              <div style="text-align:center;"><svg width="46" height="46" viewBox="0 0 46 46"><circle cx="23" cy="23" r="18" stroke="#2A2A33" stroke-width="3" fill="none"/><path d="M23 23 L23 7" stroke="#C7F24A" stroke-width="2.4" transform="rotate(120 23 23)"/></svg><div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#8A887F; margin-top:2px;">RELEASE</div></div>
+              <div style="flex:1; min-width:120px;">
+                <div style="display:flex; align-items:center; gap:8px; background:#121217; border:1px solid #26262F; border-radius:8px; padding:8px 11px;"><span style="color:#F2A007; font-family:'JetBrains Mono',monospace; font-size:11px;">↗</span><span style="font-size:11.5px; color:#8A887F;">&ldquo;warmer, more analog, longer tail&rdquo;</span></div>
+              </div>
+            </div>
+            <div style="border-left:1px solid #1F1F27; background:#0A0A0D; padding:14px 16px;">
+              <pre style="margin:0; font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.8; white-space:pre-wrap; color:#8A887F;"><span style="color:#6B675E;">// ~ warm·pad</span>
+<span style="color:#6AA0FF;">note</span>(x).<span style="color:#6AA0FF;">s</span>(<span style="color:#E0A75C;">"sawtooth"</span>)
+ .<span style="color:#6AA0FF;">unison</span>(<span style="color:#C58CF2;">2</span>).<span style="color:#6AA0FF;">detune</span>(<span style="color:#C58CF2;">.12</span>)
+ .<span style="color:#6AA0FF;">lpf</span>(<span style="color:#C58CF2;">900</span>).<span style="color:#6AA0FF;">lpq</span>(<span style="color:#C58CF2;">6</span>)
+ .<span style="color:#6AA0FF;">release</span>(<span style="color:#C58CF2;">2.5</span>).<span style="color:#6AA0FF;">room</span>(<span style="color:#C58CF2;">.3</span>)</pre>
+            </div>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.3 — Patch Designer. Node graph, knobs and language all write one named signal chain.</figcaption>
+        </figure>
+
+        <!-- 7.4 SAMPLE FOUNDRY -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.4 — SAMPLE FOUNDRY</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Generate, find, and chop sound &mdash; land it as a playable bank</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">One surface, three sources: <strong>generate</strong> a sample neurally from a description and seed, <strong>search</strong> across your local packs by sound, or <strong>upload</strong>. Whatever you pick is auto-sliced into an <span style="font-family:'JetBrains Mono',monospace;">n</span>-map and dropped onto the Shelf with a one-line usage snippet inserted at your cursor.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.45);">
+          <div style="display:flex; align-items:center; gap:14px; height:42px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:11px;">
+            <span style="color:#E8E6DF; border-bottom:2px solid #C7F24A; padding:11px 0;">GENERATE</span>
+            <span style="color:#6E6A60;">SEARCH PACKS</span>
+            <span style="color:#6E6A60;">UPLOAD</span>
+          </div>
+          <div style="padding:16px 18px;">
+            <div style="display:flex; align-items:center; gap:8px; background:#121217; border:1px solid #26262F; border-radius:8px; padding:10px 13px; margin-bottom:16px;"><span style="color:#F2A007;">↗</span><span style="font-size:13px; color:#C9C7BF;">a dusty Rhodes chord in F minor, tape-saturated</span><span style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:#0D0D11; background:#C7F24A; border-radius:6px; padding:5px 12px; font-weight:700;">render</span></div>
+            <!-- waveform with slices -->
+            <div style="position:relative; background:#0A0A0D; border:1px solid #1F1F27; border-radius:8px; padding:18px 14px; margin-bottom:14px;">
+              <svg width="100%" height="58" viewBox="0 0 600 58" preserveAspectRatio="none">
+                <g stroke="#5FD3B0" stroke-width="1.4">
+                  <line x1="6" y1="29" x2="6" y2="29"/>
+                  <line x1="20" y1="14" x2="20" y2="44"/><line x1="40" y1="6" x2="40" y2="52"/><line x1="60" y1="18" x2="60" y2="40"/><line x1="80" y1="24" x2="80" y2="34"/>
+                  <line x1="160" y1="12" x2="160" y2="46"/><line x1="180" y1="4" x2="180" y2="54"/><line x1="200" y1="20" x2="200" y2="38"/><line x1="220" y1="26" x2="220" y2="32"/>
+                  <line x1="320" y1="16" x2="320" y2="42"/><line x1="340" y1="8" x2="340" y2="50"/><line x1="360" y1="22" x2="360" y2="36"/>
+                  <line x1="460" y1="14" x2="460" y2="44"/><line x1="480" y1="10" x2="480" y2="48"/><line x1="500" y1="24" x2="500" y2="34"/><line x1="540" y1="27" x2="540" y2="31"/>
+                </g>
+                <line x1="150" y1="0" x2="150" y2="58" stroke="#F2A007" stroke-width="1" stroke-dasharray="3 3"/><line x1="310" y1="0" x2="310" y2="58" stroke="#F2A007" stroke-width="1" stroke-dasharray="3 3"/><line x1="450" y1="0" x2="450" y2="58" stroke="#F2A007" stroke-width="1" stroke-dasharray="3 3"/>
+              </svg>
+              <div style="display:flex; gap:0; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#5A574F;"><span style="flex:1;">n0</span><span style="flex:1;">n1</span><span style="flex:1;">n2</span><span style="flex:1;">n3</span></div>
+              <span style="position:absolute; top:8px; right:12px; font-family:'JetBrains Mono',monospace; font-size:10px; color:#F2A007;">auto-sliced · 4</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <pre style="margin:0; flex:1; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; color:#8A887F; background:#0A0A0D; border:1px solid #1F1F27; border-radius:7px; padding:10px 12px; white-space:pre-wrap;"><span style="color:#6B675E;">// inserted at cursor →</span> <span style="color:#6AA0FF;">s</span>(<span style="color:#E0A75C;">"rhodes·Fm"</span>).<span style="color:#6AA0FF;">n</span>(<span style="color:#E0A75C;">"0 1 2 3"</span>)</pre>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#0D0D11; background:#F2A007; border-radius:6px; padding:8px 14px; font-weight:700;">add to Shelf</span>
+            </div>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.4 — Sample Foundry. Generated or found, every sound lands sliced and immediately playable by name.</figcaption>
+        </figure>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 continued -->
+  <section style="margin-top:56px;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div></div>
+      <div style="width:100%; min-width:0;">
+
+        <!-- 7.5 THEORY + NOTATION -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.5 — THEORY OPS &amp; THE NOTATION BRIDGE</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">For the musician: read it as a score, command it as theory</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">Hover any pitched pattern to see it on a staff with a Roman-numeral harmonic readout. Edit on the staff and the code updates; edit the code and the staff follows. Theory operations &mdash; <em>reharmonise, voice-lead, modulate, invert, add counterpoint</em> &mdash; are constrained to the key and previewed on both staff and audio before they commit.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#F4F2EC; border:1px solid #E2DCCF; box-shadow:0 18px 44px -26px rgba(0,0,0,.26);">
+          <div style="display:flex; align-items:center; gap:12px; height:40px; padding:0 14px; background:#FBFAF6; border-bottom:1px solid #E2DCCF; font-family:'JetBrains Mono',monospace; font-size:11px; color:#7C7568;">
+            <span style="color:#211E18;">$pad</span><span>· notation bridge</span><span style="margin-left:auto; color:#B86B12;">/reharmonise → modal interchange</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#E2DCCF;">
+            <!-- before -->
+            <div style="background:#FFFFFF; padding:18px;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.14em; color:#9A917E; margin-bottom:10px;">BEFORE</div>
+              <svg width="100%" height="86" viewBox="0 0 280 86">
+                <g stroke="#C9C2B2" stroke-width="1"><line x1="0" y1="22" x2="280" y2="22"/><line x1="0" y1="33" x2="280" y2="33"/><line x1="0" y1="44" x2="280" y2="44"/><line x1="0" y1="55" x2="280" y2="55"/><line x1="0" y1="66" x2="280" y2="66"/></g>
+                <text x="6" y="58" font-family="Spectral, serif" font-size="40" fill="#211E18">&#x1D11E;</text>
+                <g fill="#211E18"><ellipse cx="95" cy="55" rx="6" ry="4.4" transform="rotate(-18 95 55)"/><ellipse cx="95" cy="44" rx="6" ry="4.4" transform="rotate(-18 95 44)"/><ellipse cx="95" cy="33" rx="6" ry="4.4" transform="rotate(-18 95 33)"/></g>
+                <g fill="#211E18"><ellipse cx="180" cy="50" rx="6" ry="4.4" transform="rotate(-18 180 50)"/><ellipse cx="180" cy="39" rx="6" ry="4.4" transform="rotate(-18 180 39)"/><ellipse cx="180" cy="28" rx="6" ry="4.4" transform="rotate(-18 180 28)"/></g>
+              </svg>
+              <div style="display:flex; gap:30px; font-family:'Spectral',serif; font-style:italic; font-size:15px; color:#544E44; margin-top:6px;"><span style="margin-left:78px;">i<span style="font-size:11px;">m7</span></span><span>&#9837;VI<span style="font-size:11px;">maj7</span></span></div>
+            </div>
+            <!-- after -->
+            <div style="background:#FBFCF7; padding:18px;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.14em; color:#5E7E14; margin-bottom:10px;">AFTER · borrowed iv</div>
+              <svg width="100%" height="86" viewBox="0 0 280 86">
+                <g stroke="#C9C2B2" stroke-width="1"><line x1="0" y1="22" x2="280" y2="22"/><line x1="0" y1="33" x2="280" y2="33"/><line x1="0" y1="44" x2="280" y2="44"/><line x1="0" y1="55" x2="280" y2="55"/><line x1="0" y1="66" x2="280" y2="66"/></g>
+                <text x="6" y="58" font-family="Spectral, serif" font-size="40" fill="#211E18">&#x1D11E;</text>
+                <g fill="#211E18"><ellipse cx="95" cy="55" rx="6" ry="4.4" transform="rotate(-18 95 55)"/><ellipse cx="95" cy="44" rx="6" ry="4.4" transform="rotate(-18 95 44)"/><ellipse cx="95" cy="33" rx="6" ry="4.4" transform="rotate(-18 95 33)"/></g>
+                <g fill="#5E7E14"><ellipse cx="180" cy="55" rx="6" ry="4.4" transform="rotate(-18 180 55)"/><ellipse cx="180" cy="44" rx="6" ry="4.4" transform="rotate(-18 180 44)"/><ellipse cx="180" cy="36" rx="6" ry="4.4" transform="rotate(-18 180 36)"/></g>
+              </svg>
+              <div style="display:flex; gap:30px; font-family:'Spectral',serif; font-style:italic; font-size:15px; color:#544E44; margin-top:6px;"><span style="margin-left:78px;">i<span style="font-size:11px;">m7</span></span><span style="color:#5E7E14;">iv<span style="font-size:11px;">m9</span></span></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:13px 16px; border-top:1px solid #E2DCCF; background:#FFFFFF;">
+            <pre style="margin:0; flex:1; font-family:'JetBrains Mono',monospace; font-size:11px; color:#7C7568; white-space:pre-wrap;"><span style="color:#0E7C66;">$pad</span>: <span style="color:#2563C9;">note</span>(<span style="color:#A8631A;">"&lt;Cm7 </span><span style="background:rgba(94,126,20,.18); color:#3A6A0E;">Fm9</span><span style="color:#A8631A;">&gt;"</span>)  <span style="color:#9A917E;">// was Abmaj7</span></pre>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#FBFAF6; background:#5E7E14; border-radius:6px; padding:6px 13px; font-weight:700;">accept ⏎</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#544E44; border:1px solid #E2DCCF; border-radius:6px; padding:6px 13px;">other voicing ↻</span>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.5 — Bidirectional notation bridge. Theory ops stay in-key and preview on staff, code and audio at once. <span style="color:#B86B12;">Substitute glyphs (Lucide/Unicode) stand in for engraved notation.</span></figcaption>
+        </figure>
+
+        <!-- 7.6 ARRANGEMENT -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.6 — ARRANGEMENT</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Scenes on a timeline; the Maestro writes the transitions</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">For pieces that have a shape, lay named scenes on a timeline &mdash; <em>intro, build, drop, break, outro</em>. Each scene is a snapshot of which voices play and how. Ask for a transition between two scenes and the Maestro writes the automation (a filter sweep, a riser, a drop-out); rehearse it, then lock it. In Performance mode the same scenes become launch buttons.</p>
+
+        <figure class="keepwhole" style="margin:0 0 8px;">
+        <div style="border-radius:12px; overflow:hidden; background:#0D0D11; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.45);">
+          <div style="display:flex; align-items:center; gap:10px; height:40px; padding:0 14px; background:#101015; border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">
+            <span style="color:#E8E6DF;">nightjar</span><span>· arrangement</span><span style="margin-left:auto;">5 scenes · 3:48</span>
+          </div>
+          <!-- scene header -->
+          <div style="display:grid; grid-template-columns:74px repeat(5,1fr); border-bottom:1px solid #1F1F27; font-family:'JetBrains Mono',monospace; font-size:10.5px;">
+            <div style="padding:9px 10px; color:#5A574F; border-right:1px solid #1A1A21;">VOICE</div>
+            <div style="padding:9px 8px; text-align:center; color:#8A887F; border-right:1px solid #1A1A21;">intro</div>
+            <div style="padding:9px 8px; text-align:center; color:#8A887F; border-right:1px solid #1A1A21;">build</div>
+            <div style="padding:9px 8px; text-align:center; color:#0D0D11; background:#C7F24A; font-weight:700; border-right:1px solid #1A1A21;">drop ▸</div>
+            <div style="padding:9px 8px; text-align:center; color:#8A887F; border-right:1px solid #1A1A21;">break</div>
+            <div style="padding:9px 8px; text-align:center; color:#8A887F;">outro</div>
+          </div>
+          <!-- rows -->
+          <div style="font-family:'JetBrains Mono',monospace; font-size:10px;">
+            <div style="display:grid; grid-template-columns:74px repeat(5,1fr); border-bottom:1px solid #141419;"><div style="padding:8px 10px; color:#6AA0FF; border-right:1px solid #1A1A21;">drums</div><div style="border-right:1px solid #1A1A21;"></div><div style="margin:5px 6px; border-radius:3px; background:#6AA0FF; opacity:.55; border-right:0;"></div><div style="margin:5px 6px; border-radius:3px; background:#6AA0FF;"></div><div style="border-right:1px solid #1A1A21;"></div><div style="margin:5px 6px; border-radius:3px; background:#6AA0FF; opacity:.4;"></div></div>
+            <div style="display:grid; grid-template-columns:74px repeat(5,1fr); border-bottom:1px solid #141419;"><div style="padding:8px 10px; color:#C7F24A; border-right:1px solid #1A1A21;">hats</div><div style="border-right:1px solid #1A1A21;"></div><div style="margin:5px 6px; border-radius:3px; background:#C7F24A; opacity:.6;"></div><div style="margin:5px 6px; border-radius:3px; background:#C7F24A;"></div><div style="margin:5px 6px; border-radius:3px; background:#C7F24A; opacity:.45;"></div><div></div></div>
+            <div style="display:grid; grid-template-columns:74px repeat(5,1fr); border-bottom:1px solid #141419;"><div style="padding:8px 10px; color:#C58CF2; border-right:1px solid #1A1A21;">bass</div><div style="border-right:1px solid #1A1A21;"></div><div style="margin:5px 6px; border-radius:3px; background:#C58CF2; opacity:.5;"></div><div style="margin:5px 6px; border-radius:3px; background:#C58CF2;"></div><div style="margin:5px 6px; border-radius:3px; background:#C58CF2; opacity:.7;"></div><div></div></div>
+            <div style="display:grid; grid-template-columns:74px repeat(5,1fr);"><div style="padding:8px 10px; color:#5FD3B0; border-right:1px solid #1A1A21;">pad</div><div style="margin:5px 6px; border-radius:3px; background:#5FD3B0; opacity:.6;"></div><div style="margin:5px 6px; border-radius:3px; background:#5FD3B0; opacity:.5;"></div><div></div><div style="margin:5px 6px; border-radius:3px; background:#5FD3B0;"></div><div style="margin:5px 6px; border-radius:3px; background:#5FD3B0; opacity:.6;"></div></div>
+          </div>
+          <!-- transition note -->
+          <div style="display:flex; align-items:center; gap:10px; padding:11px 14px; border-top:1px solid #1F1F27; background:#15140E;">
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#F2A007;">⤳ build → drop</span>
+            <span style="font-size:12px; color:#D8D5CB;">Maestro: 4-bar riser + lpf sweep on $bass, hats <span style="font-family:'JetBrains Mono',monospace; color:#E0A75C;">.gain</span> crescendo.</span>
+            <span style="margin-left:auto; display:flex; gap:7px;"><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#0D0D11; background:#C7F24A; border-radius:5px; padding:5px 11px; font-weight:700;">rehearse</span><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#C9C7BF; border:1px solid #2A2A33; border-radius:5px; padding:5px 11px;">lock</span></span>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.6 — Arrangement. A scene grid that doubles as performance launch buttons; transitions are generated automation you can read and rehearse.</figcaption>
+        </figure>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 continued -->
+  <section style="margin-top:56px;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div></div>
+      <div style="width:100%; min-width:0;">
+
+        <!-- 7.7 PERFORMANCE -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.7 — PERFORMANCE MODE</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">For the stage: the Cycle becomes the show</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">One keystroke clears the chrome. The Cycle clock fills the screen, scenes become big MIDI-mappable launch buttons, and every Maestro action is cycle-quantised so nothing lands off the beat. <span style="font-family:'JetBrains Mono',monospace; background:#F0EDE4; padding:1px 6px; border-radius:4px; color:#B86B12;">PANIC</span> hushes all voices instantly without stopping the transport &mdash; the safest possible exit.</p>
+
+        <figure class="keepwhole" style="margin:0 0 48px;">
+        <div style="border-radius:12px; overflow:hidden; background:#070709; border:1px solid #23232B; box-shadow:0 22px 50px -28px rgba(0,0,0,.5);">
+          <div style="display:grid; grid-template-columns:200px 1fr; min-height:300px;">
+            <!-- left minimal code + meters -->
+            <div style="border-right:1px solid #15151B; padding:18px 14px; display:flex; flex-direction:column; gap:16px;">
+              <span style="font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.2em; color:#5A574F;">LIVE</span>
+              <pre style="margin:0; font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.85; color:#5A574F; white-space:pre-wrap;"><span style="color:#5FD3B0;">$drums</span> <span style="color:#6AA0FF;">●</span>
+<span style="color:#5FD3B0;">$hats</span> <span style="color:#C7F24A;">●</span>
+<span style="color:#5FD3B0;">$bass</span> <span style="color:#C58CF2;">●</span>
+<span style="color:#5FD3B0;">$pad</span> <span style="color:#5A574F;">○</span></pre>
+              <div style="margin-top:auto; display:flex; flex-direction:column; gap:6px;">
+                <div style="height:4px; border-radius:2px; background:#15151B; overflow:hidden;"><div style="width:70%; height:100%; background:#6AA0FF;"></div></div>
+                <div style="height:4px; border-radius:2px; background:#15151B; overflow:hidden;"><div style="width:50%; height:100%; background:#C7F24A;"></div></div>
+                <div style="height:4px; border-radius:2px; background:#15151B; overflow:hidden;"><div style="width:62%; height:100%; background:#C58CF2;"></div></div>
+              </div>
+            </div>
+            <!-- center clock -->
+            <div style="position:relative; display:flex; align-items:center; justify-content:center; padding:18px;">
+              <svg width="210" height="210" viewBox="0 0 200 200" fill="none">
+                <circle cx="100" cy="100" r="80" stroke="#17171E" stroke-width="1.5"/><circle cx="100" cy="100" r="62" stroke="#17171E" stroke-width="1.5"/><circle cx="100" cy="100" r="44" stroke="#17171E" stroke-width="1.5"/><circle cx="100" cy="100" r="26" stroke="#17171E" stroke-width="1.5"/>
+                <circle cx="100" cy="20" r="4" fill="#6AA0FF"/><circle cx="100" cy="180" r="4" fill="#6AA0FF"/>
+                <circle cx="100" cy="38" r="3.4" fill="#C7F24A"/><circle cx="143.8" cy="56.2" r="3.4" fill="#C7F24A"/><circle cx="162" cy="100" r="3.4" fill="#C7F24A"/><circle cx="143.8" cy="143.8" r="3.4" fill="#C7F24A"/><circle cx="100" cy="162" r="3.4" fill="#C7F24A"/><circle cx="56.2" cy="143.8" r="3.4" fill="#C7F24A"/><circle cx="38" cy="100" r="3.4" fill="#C7F24A"/><circle cx="56.2" cy="56.2" r="3.4" fill="#C7F24A"/>
+                <circle cx="100" cy="56" r="3.6" fill="#C58CF2"/><circle cx="144" cy="100" r="3.6" fill="#C58CF2"/><circle cx="100" cy="144" r="3.6" fill="#C58CF2"/><circle cx="56" cy="100" r="3.6" fill="#C58CF2"/>
+                <g style="transform-origin:100px 100px; animation:refrSweep 8s linear infinite;"><line x1="100" y1="100" x2="100" y2="16" stroke="#C7F24A" stroke-width="2.2"/><circle cx="100" cy="16" r="5" fill="#C7F24A"/></g>
+                <circle cx="100" cy="100" r="4" fill="#E8E6DF"/>
+              </svg>
+              <div style="position:absolute; top:18px; left:18px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#C7F24A;">cycle 138</div>
+              <div style="position:absolute; top:18px; right:18px; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8A887F;">120 bpm</div>
+            </div>
+          </div>
+          <!-- scene launchers + panic -->
+          <div style="display:flex; align-items:center; gap:8px; padding:14px; border-top:1px solid #15151B; background:#0A0A0D; flex-wrap:wrap;">
+            <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#5A574F; padding-right:4px;">SCENES</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F; border:1px solid #2A2A33; border-radius:7px; padding:8px 16px;">intro</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F; border:1px solid #2A2A33; border-radius:7px; padding:8px 16px;">build</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0D0D11; background:#C7F24A; border-radius:7px; padding:8px 16px; font-weight:700;">drop</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F; border:1px solid #2A2A33; border-radius:7px; padding:8px 16px;">break</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#8A887F; border:1px solid #2A2A33; border-radius:7px; padding:8px 16px;">outro</span>
+            <span style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:#5A574F;">◎ MIDI mapped</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#0D0D11; background:#F2A007; border-radius:7px; padding:8px 16px; font-weight:700;">HUSH</span>
+            <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#FFFFFF; background:#D5322E; border-radius:7px; padding:8px 18px; font-weight:700;">PANIC</span>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.7 — Performance mode. Legible from the back of the room; panic never stops the clock.</figcaption>
+        </figure>
+
+        <!-- 7.8 SETTINGS / PROVIDERS -->
+        <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#B86B12; margin-bottom:8px;">7.8 — PROVIDERS &amp; ROUTING</div>
+        <h3 style="font-size:20px; font-weight:700; margin:0 0 8px;">Bring your own keys; route models by task</h3>
+        <p style="font-size:15px; line-height:1.65; color:#544E44; max-width:64ch; margin:0 0 20px;">Refrain talks to whichever providers you hold keys for &mdash; Anthropic, OpenAI, Google, or a local Ollama model for offline gigs. Keys live in the OS keychain. You then map <em>roles</em> to models, so cheap-and-fast handles directives while a stronger model handles generation and theory. A single <strong>local-only</strong> switch guarantees nothing leaves the machine.</p>
+
+        <figure class="keepwhole" style="margin:0 0 8px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+          <!-- providers -->
+          <div style="border:1px solid #E7E1D4; border-radius:10px; overflow:hidden;">
+            <div style="padding:13px 16px; border-bottom:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; color:#B86B12; background:#FBFAF6;">PROVIDERS · BYOK</div>
+            <div style="padding:6px 0;">
+              <div style="display:flex; align-items:center; gap:10px; padding:11px 16px;"><span style="width:8px;height:8px;border-radius:50%;background:#2E7D5B;"></span><span style="font-size:14px; color:#1A1712; flex:1;">Anthropic</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E;">sk-ant-···4f2 · connected</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="width:8px;height:8px;border-radius:50%;background:#2E7D5B;"></span><span style="font-size:14px; color:#1A1712; flex:1;">OpenAI</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E;">sk-···91a · connected</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="width:8px;height:8px;border-radius:50%;background:#C9C2B2;"></span><span style="font-size:14px; color:#544E44; flex:1;">Google</span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">+ add key</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="width:8px;height:8px;border-radius:50%;background:#2E7D5B;"></span><span style="font-size:14px; color:#1A1712; flex:1;">Ollama <span style="font-size:11px; color:#847C6E;">· local</span></span><span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E;">llama3 · 127.0.0.1</span></div>
+            </div>
+          </div>
+          <!-- routing -->
+          <div style="border:1px solid #E7E1D4; border-radius:10px; overflow:hidden;">
+            <div style="padding:13px 16px; border-bottom:1px solid #E7E1D4; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; color:#B86B12; background:#FBFAF6;">ROLE → MODEL</div>
+            <div>
+              <div style="display:flex; align-items:center; padding:11px 16px;"><span style="font-size:13.5px; color:#1A1712; flex:1;">Directives &amp; completions</span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#0E7C66; background:#EAF3EC; border-radius:5px; padding:3px 9px;">Haiku · fast</span></div>
+              <div style="display:flex; align-items:center; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="font-size:13.5px; color:#1A1712; flex:1;">Generation &amp; lanes</span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#B86B12; background:#FBF1E2; border-radius:5px; padding:3px 9px;">Sonnet · strong</span></div>
+              <div style="display:flex; align-items:center; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="font-size:13.5px; color:#1A1712; flex:1;">Theory &amp; arrangement</span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#B86B12; background:#FBF1E2; border-radius:5px; padding:3px 9px;">Sonnet · strong</span></div>
+              <div style="display:flex; align-items:center; padding:11px 16px; border-top:1px solid #F0EDE4;"><span style="font-size:13.5px; color:#1A1712; flex:1;">Offline fallback</span><span style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#544E44; background:#F0EDE4; border-radius:5px; padding:3px 9px;">llama3 · local</span></div>
+              <div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-top:1px solid #E7E1D4; background:#FBFAF6;"><span style="font-size:13.5px; color:#1A1712; flex:1; font-weight:600;">Local-only mode</span><span style="width:34px; height:19px; border-radius:999px; background:#C9C2B2; position:relative;"><span style="position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:#fff;"></span></span></div>
+            </div>
+          </div>
+        </div>
+        <figcaption style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; padding-top:10px;">Fig. 7.8 — Providers & routing. Keys in the keychain; roles mapped to models; one switch for full offline.</figcaption>
+        </figure>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 08 FLOWS ============================ -->
+  <section id="flows" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">08</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">Key flows</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 36px;">Eight paths through the tool. Two things recur in every one: an <span style="color:#0E7C66; font-weight:600;">audition</span> step before anything commits, and a <span style="color:#B86B12; font-weight:600;">cycle-quantised commit</span> so the music never breaks.</p>
+
+        <!-- flow template -->
+        <div style="display:flex; flex-direction:column; gap:26px;">
+
+          <!-- A -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">A</span><h3 style="font-size:17px; font-weight:700; margin:0;">Direct coding &mdash; the Strudel REPL, preserved</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">type a pattern</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">ghost-completion offers next</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">⌘⏎ evaluate</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">colored flash + hear it</span>
+            </div>
+            <p style="font-size:13px; color:#847C6E; margin:11px 0 0; line-height:1.5;">Errors read as music, not stack traces: <em>&ldquo;$bass has no sound — add .s(…)&rdquo;</em>. The Maestro is entirely optional here.</p>
+          </div>
+
+          <!-- B -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">B</span><h3 style="font-size:17px; font-weight:700; margin:0;">Semantic edit &mdash; &ldquo;make the hats swing&rdquo;</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">⌘K or ask</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">staged diff in Score</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">auto-audition next cycle</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">accept / reject per hunk</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:9px 13px; color:#B86B12;">commit on downbeat</span>
+            </div>
+          </div>
+
+          <!-- C -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">C</span><h3 style="font-size:17px; font-weight:700; margin:0;">Generate a section &mdash; variation lanes</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">prompt or drag reference</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">2&ndash;4 lanes returned</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">solo each vs. mix</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">refine the keeper</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:9px 13px; color:#B86B12;">commit to named scene</span>
+            </div>
+          </div>
+
+          <!-- D + E side by side -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:28px;">
+            <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+              <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">D</span><h3 style="font-size:16px; font-weight:700; margin:0;">Patch design</h3></div>
+              <div style="display:flex; flex-direction:column; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+                <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:8px 12px;">open on a sound</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:8px 12px;">graph / knobs / describe</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:8px 12px; color:#0E7C66;">preview on held note</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:8px 12px; color:#B86B12;">save to Shelf by name</span>
+              </div>
+            </div>
+            <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+              <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">E</span><h3 style="font-size:16px; font-weight:700; margin:0;">Sample foundry</h3></div>
+              <div style="display:flex; flex-direction:column; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+                <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:8px 12px;">describe / search / upload</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:8px 12px;">render or pick</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:8px 12px; color:#0E7C66;">auto-slice → n-map</span>
+                <span style="color:#B5AE9E; padding-left:6px;">↓</span>
+                <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:8px 12px; color:#B86B12;">snippet inserted at cursor</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- F -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">F</span><h3 style="font-size:17px; font-weight:700; margin:0;">Theory operation &mdash; reharmonise / modulate / voice-lead</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">select a pitched pattern</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">choose op (key-constrained)</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">preview on staff + audio</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">cycle voicings ↻</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:9px 13px; color:#B86B12;">accept</span>
+            </div>
+          </div>
+
+          <!-- G -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">G</span><h3 style="font-size:17px; font-weight:700; margin:0;">Arrangement transition</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">lay scenes on timeline</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">ask: transition build→drop</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">Maestro writes automation</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">rehearse it</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#FBF1E2; border:1px solid #EAD9B4; border-radius:7px; padding:9px 13px; color:#B86B12;">lock</span>
+            </div>
+          </div>
+
+          <!-- H -->
+          <div class="keepwhole" style="border-top:1px solid #E7E1D4; padding-top:18px;">
+            <div style="display:flex; align-items:baseline; gap:12px; margin-bottom:14px;"><span style="font-family:'Spectral',serif; font-style:italic; font-size:22px; color:#B86B12;">H</span><h3 style="font-size:17px; font-weight:700; margin:0;">Performance</h3></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; font-family:'JetBrains Mono',monospace; font-size:12px;">
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">enter Live mode</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#F4F2EC; border:1px solid #E2DCCF; border-radius:7px; padding:9px 13px;">map scenes/directives to MIDI</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#EAF3EC; border:1px solid #BFE0C8; border-radius:7px; padding:9px 13px; color:#0E7C66;">improvise · all cycle-quantised</span><span style="color:#B5AE9E; align-self:center;">→</span>
+              <span style="background:#FBE9E8; border:1px solid #F1C3C1; border-radius:7px; padding:9px 13px; color:#C0211D;">PANIC = hush, clock safe</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 09 CRAFT ============================ -->
+  <section id="craft" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">09</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">The composing model</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 36px;">Four commitments make Refrain feel like an instrument a trained musician can trust &mdash; not a slot machine.</p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0; border-top:1px solid #E7E1D4;">
+          <div style="padding:24px 28px 24px 0; border-right:1px solid #E7E1D4; border-bottom:1px solid #E7E1D4;">
+            <h3 style="font-family:'Spectral',serif; font-weight:600; font-size:19px; margin:0 0 9px;">The cycle is the unit</h3>
+            <p style="font-size:14.5px; line-height:1.65; color:#544E44; margin:0;">Every change &mdash; typed, spoken, or generated &mdash; quantises to a cycle or phrase boundary. You always know <em>when</em> it lands, and the music never stutters mid-thought.</p>
+          </div>
+          <div style="padding:24px 0 24px 28px; border-bottom:1px solid #E7E1D4;">
+            <h3 style="font-family:'Spectral',serif; font-weight:600; font-size:19px; margin:0 0 9px;">Determinism where it matters</h3>
+            <p style="font-size:14.5px; line-height:1.65; color:#544E44; margin:0;">Directives are reproducible transforms. Generation is seeded &mdash; re-roll with the same seed for the same result, or nudge the seed to wander. Randomness is a choice, never an accident.</p>
+          </div>
+          <div style="padding:24px 28px 24px 0; border-right:1px solid #E7E1D4;">
+            <h3 style="font-family:'Spectral',serif; font-weight:600; font-size:19px; margin:0 0 9px;">A bridge for notation literacy</h3>
+            <p style="font-size:14.5px; line-height:1.65; color:#544E44; margin:0;">Staff view, Roman-numeral harmony, and &ldquo;explain this line as music&rdquo; let a musician who reads fluently meet the code halfway &mdash; learning the syntax through sound they already understand.</p>
+          </div>
+          <div style="padding:24px 0 24px 28px;">
+            <h3 style="font-family:'Spectral',serif; font-weight:600; font-size:19px; margin:0 0 9px;">Provenance &mdash; a musical changelog</h3>
+            <p style="font-size:14.5px; line-height:1.65; color:#544E44; margin:0;">Every scene and generated part remembers the prompt, directive, seed, and model that made it. The history is a tree you can walk, fork, and cite &mdash; revision control that speaks music.</p>
+          </div>
+        </div>
+
+        <blockquote style="margin:40px 0 0; padding:0 0 0 24px; border-left:3px solid #B86B12;">
+          <p style="font-family:'Spectral',serif; font-style:italic; font-weight:400; font-size:clamp(20px,2.6vw,27px); line-height:1.4; color:#1A1712; margin:0; max-width:30ch;">The machine should be able to surprise you &mdash; but only on the beat, and only into code you can read tomorrow.</p>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 10 SYSTEM ============================ -->
+  <section id="system" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">10</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 30px;">Design system &amp; rationale</h2>
+
+        <!-- color language -->
+        <h3 style="font-size:17px; font-weight:700; margin:0 0 6px;">A colour language with meaning, not decoration</h3>
+        <p style="font-size:14.5px; line-height:1.65; color:#544E44; max-width:62ch; margin:0 0 18px;">Three signal colours carry fixed meaning across every surface, so the eye learns them once. Code syntax sits in its own cool palette so it never competes.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:40px;">
+          <div style="flex:1 1 150px; border:1px solid #E7E1D4; border-radius:9px; overflow:hidden;"><div style="height:46px; background:#C7F24A;"></div><div style="padding:10px 12px;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#1A1712;">Lime</div><div style="font-size:12px; color:#847C6E;">live · transport · the cycle</div></div></div>
+          <div style="flex:1 1 150px; border:1px solid #E7E1D4; border-radius:9px; overflow:hidden;"><div style="height:46px; background:#F2A007;"></div><div style="padding:10px 12px;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#1A1712;">Amber</div><div style="font-size:12px; color:#847C6E;">the Maestro · AI authorship</div></div></div>
+          <div style="flex:1 1 150px; border:1px solid #E7E1D4; border-radius:9px; overflow:hidden;"><div style="height:46px; background:#6AA0FF;"></div><div style="padding:10px 12px;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#1A1712;">Blue</div><div style="font-size:12px; color:#847C6E;">selection · structure</div></div></div>
+          <div style="flex:1 1 150px; border:1px solid #E7E1D4; border-radius:9px; overflow:hidden;"><div style="height:46px; background:#0D0D11;"></div><div style="padding:10px 12px;"><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#1A1712;">Ink</div><div style="font-size:12px; color:#847C6E;">stage surface (dark default)</div></div></div>
+        </div>
+
+        <!-- type -->
+        <h3 style="font-size:17px; font-weight:700; margin:0 0 6px;">Type &mdash; the concert programme meets the terminal</h3>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:0; border-top:1px solid #E7E1D4; margin-bottom:40px;">
+          <div style="padding:20px 22px 18px 0; border-right:1px solid #E7E1D4;"><div style="font-family:'Spectral',serif; font-size:34px; color:#1A1712; line-height:1; margin-bottom:10px;">Aa</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">SPECTRAL</div><div style="font-size:13px; color:#847C6E; line-height:1.5;">Display &mdash; headlines, pull-quotes, the score-programme voice.</div></div>
+          <div style="padding:20px 22px 18px 22px; border-right:1px solid #E7E1D4;"><div style="font-family:'Hanken Grotesk',sans-serif; font-weight:700; font-size:34px; color:#1A1712; line-height:1; margin-bottom:10px;">Aa</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">HANKEN GROTESK</div><div style="font-size:13px; color:#847C6E; line-height:1.5;">Body & UI &mdash; copy, labels, every interface surface.</div></div>
+          <div style="padding:20px 0 18px 22px;"><div style="font-family:'JetBrains Mono',monospace; font-weight:600; font-size:32px; color:#1A1712; line-height:1; margin-bottom:12px;">Aa</div><div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#B86B12;">JETBRAINS MONO</div><div style="font-size:13px; color:#847C6E; line-height:1.5;">Code, transport, hex, all technical chrome.</div></div>
+        </div>
+
+        <!-- principles of build -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0; border-top:1px solid #E7E1D4;">
+          <div style="padding:22px 28px 18px 0; border-right:1px solid #E7E1D4; border-bottom:1px solid #E7E1D4;"><h3 style="font-size:15.5px; font-weight:700; margin:0 0 7px;">Keyboard-first</h3><p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Every action has a chord. ⌘K is the Maestro inline; ⏎ accepts; the transport keys never move. Hands stay home.</p></div>
+          <div style="padding:22px 0 18px 28px; border-bottom:1px solid #E7E1D4;"><h3 style="font-size:15.5px; font-weight:700; margin:0 0 7px;">Accessible by construction</h3><p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Meters carry numeric read-outs; colour is never the only signal; <span style="font-family:'JetBrains Mono',monospace; font-size:12px;">prefers-reduced-motion</span> stills the sweep without losing the count.</p></div>
+          <div style="padding:22px 28px 18px 0; border-right:1px solid #E7E1D4;"><h3 style="font-size:15.5px; font-weight:700; margin:0 0 7px;">Settling, not bouncing</h3><p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Motion is physical and brief &mdash; a diff settles in, the sweep is metronomic. No springs, no confetti. The music is the delight.</p></div>
+          <div style="padding:22px 0 18px 28px;"><h3 style="font-size:15.5px; font-weight:700; margin:0 0 7px;">Local-first</h3><p style="font-size:13.5px; line-height:1.6; color:#544E44; margin:0;">Audio is offline Web Audio. Files, samples, patches and history are on disk. Only LLM calls touch the network &mdash; and local-only mode stops even those.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 11 ROADMAP ============================ -->
+  <section id="roadmap" style="margin-top:96px; padding-top:40px; border-top:1.5px solid #1A1712;">
+    <div style="display:grid; grid-template-columns:88px 1fr; gap:clamp(16px,3vw,40px); align-items:start;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:13px; color:#B86B12; padding-top:6px;">11</div>
+      <div style="width:100%; min-width:0;">
+        <h2 style="font-family:'Spectral',serif; font-weight:600; font-size:clamp(28px,3.6vw,40px); line-height:1.05; letter-spacing:-.018em; margin:0 0 12px;">Open questions &amp; next</h2>
+        <p style="font-size:16px; line-height:1.7; color:#544E44; max-width:64ch; margin:0 0 30px;">Decisions deliberately left open, and the obvious next moves once the core holds.</p>
+
+        <div style="border-top:1px solid #E7E1D4;">
+          <div style="display:flex; gap:16px; align-items:baseline; padding:15px 0; border-bottom:1px solid #E7E1D4;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#0E7C66; background:#EAF3EC; border-radius:4px; padding:3px 8px; flex:none; width:74px; text-align:center;">NEXT</span><div><span style="font-size:15px; font-weight:600; color:#1A1712;">MIDI &amp; OSC out.</span> <span style="font-size:14.5px; color:#544E44; line-height:1.6;">Out of scope for v1 (pure Web Audio), but the Tauri/Rust shell exists precisely to add hardware MIDI and OSC-to-SuperDirt later without a browser sandbox fight.</span></div></div>
+          <div style="display:flex; gap:16px; align-items:baseline; padding:15px 0; border-bottom:1px solid #E7E1D4;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#B86B12; background:#FBF1E2; border-radius:4px; padding:3px 8px; flex:none; width:74px; text-align:center;">EXPLORE</span><div><span style="font-size:15px; font-weight:600; color:#1A1712;">Live collaboration.</span> <span style="font-size:14.5px; color:#544E44; line-height:1.6;">Shared sessions with multiplayer cursors &mdash; two coders, one set. Conflict model and latency on the cycle clock are the open hard parts.</span></div></div>
+          <div style="display:flex; gap:16px; align-items:baseline; padding:15px 0; border-bottom:1px solid #E7E1D4;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#B86B12; background:#FBF1E2; border-radius:4px; padding:3px 8px; flex:none; width:74px; text-align:center;">EXPLORE</span><div><span style="font-size:15px; font-weight:600; color:#1A1712;">Directive &amp; patch marketplace.</span> <span style="font-size:14.5px; color:#544E44; line-height:1.6;">Shareable packs of custom musical verbs, patches and sample banks &mdash; a culture of vocabulary, not just presets.</span></div></div>
+          <div style="display:flex; gap:16px; align-items:baseline; padding:15px 0; border-bottom:1px solid #E7E1D4;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#7C7568; background:#F0EDE4; border-radius:4px; padding:3px 8px; flex:none; width:74px; text-align:center;">OPEN</span><div><span style="font-size:15px; font-weight:600; color:#1A1712;">A tablet performance companion.</span> <span style="font-size:14.5px; color:#544E44; line-height:1.6;">The Cycle clock + scene launchers as a touch surface beside the laptop. Worth it, or a distraction from the keyboard-first core?</span></div></div>
+          <div style="display:flex; gap:16px; align-items:baseline; padding:15px 0;"><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#7C7568; background:#F0EDE4; border-radius:4px; padding:3px 8px; flex:none; width:74px; text-align:center;">OPEN</span><div><span style="font-size:15px; font-weight:600; color:#1A1712;">Notation-bridge fidelity limits.</span> <span style="font-size:14.5px; color:#544E44; line-height:1.6;">Polyrhythm, microtonality and dense polyphony resist a clean staff. Where does the bridge gracefully say &ldquo;this is better read as code&rdquo;?</span></div></div>
+        </div>
+
+        <!-- colophon -->
+        <div style="margin-top:64px; padding-top:28px; border-top:1.5px solid #1A1712; display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:13px;">
+            <svg width="28" height="28" viewBox="0 0 34 34" fill="none"><circle cx="17" cy="17" r="15.5" stroke="#1A1712" stroke-width="1.4"/><circle cx="17" cy="17" r="10" stroke="#B86B12" stroke-width="1.4"/><circle cx="17" cy="17" r="4.5" stroke="#1A1712" stroke-width="1.4"/><line x1="17" y1="17" x2="17" y2="2.5" stroke="#B86B12" stroke-width="1.6"/><circle cx="17" cy="17" r="1.7" fill="#1A1712"/></svg>
+            <div><div style="font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.3em; text-transform:uppercase;">Refrain</div><div style="font-size:12.5px; color:#847C6E;">Compose the loop &mdash; by hand or by intention.</div></div>
+          </div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#847C6E; text-align:right; line-height:1.7;">Design specification · v0.1<br>Strudel · Web Audio · BYOK<br>June 2026</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <template id="__bundler_thumbnail">
+    <div style="width:100%; height:100%; background:#0D0D11; display:flex; align-items:center; justify-content:center;">
+      <svg width="60%" height="60%" viewBox="0 0 200 200" fill="none"><circle cx="100" cy="100" r="80" stroke="#23232B" stroke-width="3"/><circle cx="100" cy="100" r="56" stroke="#23232B" stroke-width="3"/><circle cx="100" cy="100" r="32" stroke="#F2A007" stroke-width="3"/><line x1="100" y1="100" x2="100" y2="20" stroke="#C7F24A" stroke-width="4"/><circle cx="100" cy="20" r="7" fill="#C7F24A"/><circle cx="100" cy="100" r="6" fill="#E8E6DF"/></svg>
+    </div>
+  </template>
+
+  </td></tr></tbody>
+  <tfoot><tr><td class="ftr-space" style="display:none; padding:0;"></td></tr></tfoot>
+  </table>
+</main>
+</x-dc>
+</body>
+</html>

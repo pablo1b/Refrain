@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useStore } from '../state/store';
+import { useStore, transportKeyLabel } from '../state/store';
 import { engine } from '../audio/strudelEngine';
 import { Logo } from './Logo';
 
@@ -40,11 +40,14 @@ export function Titlebar() {
   const roles = useStore((s) => s.roles);
   const providers = useStore((s) => s.providers);
   const engineStatus = useStore((s) => s.engineStatus);
+  const transportKey = useStore((s) => s.transportKey);
+  const midiOn = useStore((s) => s.midiOn);
 
   const genRole = roles.find((r) => r.id === 'generation');
   const genProv = providers.find((p) => p.id === genRole?.provider);
   const modelLabel = genProv?.label ? `${genProv.label.replace('Anthropic', 'Claude')} ${capModel(genRole?.model)}` : 'Maestro';
   const bpm = Math.round(cps * 240);
+  const tkLabel = transportKeyLabel(transportKey); // the ACTIVE key — never hardcoded (§12.3)
 
   return (
     <div
@@ -84,7 +87,7 @@ export function Titlebar() {
           padding: '5px 12px',
         }}
       >
-        <button onClick={togglePlay} title={playing ? 'stop (F5)' : 'play (F5)'} aria-label="play/stop" style={{ display: 'flex', alignItems: 'center', padding: 0 }}>
+        <button onClick={togglePlay} title={`${playing ? 'pause' : 'play'} (${tkLabel})`} aria-label="play/stop" style={{ display: 'flex', alignItems: 'center', padding: 0 }}>
           {playing ? (
             <span style={{ display: 'flex', gap: 2 }}>
               <span style={{ width: 3, height: 12, background: 'var(--live)' }} />
@@ -112,6 +115,16 @@ export function Titlebar() {
         >
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: engineStatus === 'ready' ? 'var(--maestro)' : engineStatus === 'loading' ? 'var(--select)' : 'var(--text-dim)' }} />
           {modelLabel}
+        </button>
+        <button
+          onClick={() => openSurface('ports')}
+          title="MIDI / OSC sync-out — the Cycle as master"
+          style={{ ...mono, fontSize: 11, color: midiOn ? 'var(--live)' : 'var(--text-2)', border: `1px solid ${midiOn ? 'var(--live)' : 'var(--line-4)'}`, borderRadius: 6, padding: '4px 8px' }}
+        >
+          ◎ midi
+        </button>
+        <button onClick={() => openSurface('settings')} title="settings — keymap & accessibility" style={{ ...mono, fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--line-4)', borderRadius: 6, padding: '4px 8px' }}>
+          ⚙
         </button>
         <button onClick={toggleTheme} title="toggle theme" style={{ ...mono, fontSize: 11, color: 'var(--text-2)', border: '1px solid var(--line-4)', borderRadius: 6, padding: '4px 8px' }}>
           ◐ theme

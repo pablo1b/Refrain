@@ -8,6 +8,8 @@ import {
   loadRoles,
   saveRoles,
   defaultProviders,
+  hasReasoningTier,
+  resolveEffort,
   MODEL_OPTIONS,
 } from './providers';
 import type { Provider } from '../types';
@@ -205,5 +207,30 @@ describe('chat()', () => {
     await expect(
       chat({ provider: prov(), model: 'claude-sonnet-4-6', system: 's', user: 'u' }),
     ).rejects.toThrow(/429/);
+  });
+});
+
+// Effort × routing reconciliation (spec §12.4).
+describe('hasReasoningTier', () => {
+  it('anthropic models all reason; openai only o-series; gemini/local do not', () => {
+    expect(hasReasoningTier('anthropic', 'claude-haiku-4-5')).toBe(true);
+    expect(hasReasoningTier('openai', 'o3-mini')).toBe(true);
+    expect(hasReasoningTier('openai', 'gpt-4o')).toBe(false);
+    expect(hasReasoningTier('google', 'gemini-flash-latest')).toBe(false);
+    expect(hasReasoningTier('ollama', 'llama3')).toBe(false);
+  });
+});
+
+describe('resolveEffort', () => {
+  it('collapses to fast when the model has no reasoning tier', () => {
+    expect(resolveEffort('thinking', true, false)).toEqual({ thinking: false, trace: false });
+  });
+  it('fast is always no-trace; thinking is always reasoning', () => {
+    expect(resolveEffort('fast', true, true)).toEqual({ thinking: false, trace: false });
+    expect(resolveEffort('thinking', false, true)).toEqual({ thinking: true, trace: true });
+  });
+  it('auto lets the role decide — tasks think, directives do not', () => {
+    expect(resolveEffort('auto', true, true)).toEqual({ thinking: true, trace: true });
+    expect(resolveEffort('auto', false, true)).toEqual({ thinking: false, trace: false });
   });
 });

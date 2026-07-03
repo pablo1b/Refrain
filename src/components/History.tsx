@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../state/store';
 import { Modal } from './Modal';
 import { seedHex } from '../state/store';
-import type { Commit, Provenance } from '../types';
+import type { Commit, Provenance, ConflictChoice, VoiceChange } from '../types';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 
@@ -21,6 +21,7 @@ const SOURCE_LABEL: Record<Provenance['source'], string> = {
   llm: 'maestro',
   prompter: 'prompter',
   init: 'init',
+  merge: 'merge',
 };
 
 function timeOf(when: number): string {
@@ -37,6 +38,7 @@ export function History() {
   const rewind = useStore((s) => s.rewind);
   const forkFrom = useStore((s) => s.forkFrom);
   const reproduceCommit = useStore((s) => s.reproduceCommit);
+  const mergeInto = useStore((s) => s.mergeInto);
   const [selId, setSel] = useState<string | null>(headId);
 
   // newest first — the walkable line (main line + parked stubs interleaved)
@@ -74,7 +76,7 @@ export function History() {
         {/* provenance card */}
         <div>
           {selected ? (
-            <ProvenanceCard commit={selected} isHead={selected.id === headId} onReproduce={() => reproduceCommit(selected.id)} onFork={() => { forkFrom(selected.id); setSel(selected.id); }} onRewind={() => { rewind(selected.id); setSel(selected.id); }} />
+            <ProvenanceCard commit={selected} isHead={selected.id === headId} onReproduce={() => reproduceCommit(selected.id)} onFork={() => { forkFrom(selected.id); setSel(selected.id); }} onRewind={() => { rewind(selected.id); setSel(selected.id); }} onMerge={() => mergeInto(selected.id)} />
           ) : (
             <div style={{ ...mono, fontSize: 12, color: 'var(--text-dim)', padding: 20 }}>Select a commit to see its recipe.</div>
           )}
@@ -147,7 +149,7 @@ function CommitRow({ commit, isHead, isSel, onSelect }: { commit: Commit; isHead
   );
 }
 
-function ProvenanceCard({ commit, isHead, onReproduce, onFork, onRewind }: { commit: Commit; isHead: boolean; onReproduce: () => void; onFork: () => void; onRewind: () => void }) {
+function ProvenanceCard({ commit, isHead, onReproduce, onFork, onRewind, onMerge }: { commit: Commit; isHead: boolean; onReproduce: () => void; onFork: () => void; onRewind: () => void; onMerge: () => void }) {
   const p = commit.provenance;
   const reseed = useStore((s) => s.reseed);
   return (
@@ -175,7 +177,91 @@ function ProvenanceCard({ commit, isHead, onReproduce, onFork, onRewind }: { com
         <button onClick={onReproduce} disabled={p.seed == null} style={{ ...mono, fontSize: 10, fontWeight: 700, color: 'var(--live-ink)', background: p.seed == null ? 'var(--line-5)' : 'var(--live)', borderRadius: 5, padding: '5px 11px', opacity: p.seed == null ? 0.5 : 1 }}>reproduce</button>
         <button onClick={onFork} style={{ ...mono, fontSize: 10, color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 5, padding: '5px 11px' }}>fork from here</button>
         <button onClick={onRewind} disabled={isHead} style={{ ...mono, fontSize: 10, color: isHead ? 'var(--text-dim)' : 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 5, padding: '5px 11px' }}>rewind ⌥Z</button>
+        <button onClick={onMerge} disabled={isHead} title="voice-granular merge into HEAD (§12.6)" style={{ ...mono, fontSize: 10, color: isHead ? 'var(--text-dim)' : 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 5, padding: '5px 11px' }}>⑃ merge → HEAD</button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Voice-granular merge conflict card (spec §12.6). Disjoint voices already merged
+// automatically; here the user resolves same-voice edits by ear — keep mine,
+// keep theirs, layer as variation lanes, or audition both.
+// ---------------------------------------------------------------------------
+const CHOICES: { id: ConflictChoice; label: string }[] = [
+  { id: 'mine', label: 'keep mine' },
+  { id: 'theirs', label: 'keep theirs' },
+  { id: 'lanes', label: 'layer as lanes' },
+  { id: 'audition', label: 'audition both' },
+];
+
+export function MergeConflictModal() {
+  const pending = useStore((s) => s.pendingMerge);
+  const resolveMerge = useStore((s) => s.resolveMerge);
+  const cancelMerge = useStore((s) => s.cancelMerge);
+  const [choices, setChoices] = useState<Record<string, ConflictChoice>>({});
+  if (!pending) return null;
+  const pick = (voiceId: string): ConflictChoice => choices[voiceId] ?? 'mine';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'color-mix(in srgb, var(--bg-deeper) 82%, transparent)', backdropFilter: 'blur(3px)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="refr-settle" role="dialog" aria-modal="true" style={{ width: 640, maxWidth: '94vw', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg)', border: '1px solid var(--line-2)', borderRadius: 13, boxShadow: 'var(--shadow)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--line)', background: 'var(--titlebar)' }}>
+          <span style={{ ...mono, fontSize: 11, letterSpacing: '.14em', color: 'var(--maestro)' }}>12.6 — MERGE</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 18, color: 'var(--text)' }}>Resolve by ear, not by text</span>
+        </div>
+        <div style={{ padding: 18 }}>
+          <p style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--text-2)', margin: '0 0 16px' }}>
+            Merging <strong>{pending.theirsLabel}</strong> into HEAD.
+            {pending.clean.length > 0 && <> {pending.clean.length} voice{pending.clean.length === 1 ? '' : 's'} ({pending.clean.map((v) => `$${v}`).join(', ')}) merged cleanly.</>}
+            {pending.cpsWinner && <> Tempo: {pending.cpsWinner === 'ours' ? 'kept HEAD’s (last writer)' : 'took the branch’s'}.</>}
+            {' '}These voices were edited on both sides:
+          </p>
+          {pending.conflicts.map((c) => (
+            <ConflictRow key={c.voiceId} change={c} choice={pick(c.voiceId)} onChoose={(ch) => setChoices((prev) => ({ ...prev, [c.voiceId]: ch }))} />
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, padding: '14px 18px', borderTop: '1px solid var(--line)', background: 'var(--bg-deep)' }}>
+          <button onClick={() => resolveMerge(choices)} style={{ ...mono, fontSize: 11, fontWeight: 700, color: 'var(--live-ink)', background: 'var(--live)', borderRadius: 6, padding: '7px 14px' }}>
+            merge on the next phrase ⏎
+          </button>
+          <button onClick={cancelMerge} style={{ ...mono, fontSize: 11, color: 'var(--text-1)', border: '1px solid var(--line-5)', borderRadius: 6, padding: '7px 14px' }}>cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConflictRow({ change, choice, onChoose }: { change: VoiceChange; choice: ConflictChoice; onChoose: (c: ConflictChoice) => void }) {
+  return (
+    <div style={{ border: '1px solid var(--line-4)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 13px', background: 'var(--bg-deep)', borderBottom: '1px solid var(--line-3)', ...mono, fontSize: 11 }}>
+        <span style={{ color: 'var(--c-voice)' }}>${change.voiceId}</span>
+        <span style={{ color: 'var(--text-dim)' }}>edited on both branches</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'var(--line-3)' }}>
+        <Side label="MINE" code={change.ours} />
+        <Side label="THEIRS" code={change.theirs} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, padding: '9px 13px', flexWrap: 'wrap' }}>
+        {CHOICES.map((c) => {
+          const on = c.id === choice;
+          return (
+            <button key={c.id} onClick={() => onChoose(c.id)} style={{ ...mono, fontSize: 10, color: on ? 'var(--live-ink)' : 'var(--text-1)', background: on ? 'var(--live)' : 'transparent', border: `1px solid ${on ? 'var(--live)' : 'var(--line-5)'}`, borderRadius: 5, padding: '4px 10px', fontWeight: on ? 700 : 400 }}>
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Side({ label, code }: { label: string; code: string | null }) {
+  return (
+    <div style={{ background: 'var(--bg-deep)', padding: '9px 12px' }}>
+      <div style={{ ...mono, fontSize: 9, letterSpacing: '.14em', color: 'var(--text-dim)', marginBottom: 6 }}>{label}</div>
+      <pre style={{ ...mono, fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-1)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{code ?? '— deleted —'}</pre>
     </div>
   );
 }

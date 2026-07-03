@@ -16,13 +16,21 @@ import type {
   ArcSelection,
   ContextPin,
   LensId,
+  MiniRollMode,
   PrompterCard,
   CustomDirective,
+  MaestroEffort,
+  MotionPref,
+  TransportKey,
+  ConflictChoice,
+  MergeResult,
 } from '../types';
 import { engine, type EngineStatus, type EngineEvent } from '../audio/strudelEngine';
+import { midi } from '../audio/midiSync';
 import { parseScore } from '../music/parseScore';
 import { applyDirective, interpret, DIRECTIVE_BY_ID } from '../music/directives';
 import { computeHunks, applyEnabled } from '../music/diff';
+import { mergeScores, applyResolutions } from '../music/merge';
 import { colorForVoice, cssVar } from '../theme/tokens';
 import {
   loadProviders,
@@ -32,6 +40,8 @@ import {
   strengthFor,
   chat,
   extractCode,
+  hasReasoningTier,
+  resolveEffort,
   MAESTRO_SYSTEM,
 } from '../llm/providers';
 import { buildLanes } from '../music/lanes';
@@ -95,6 +105,49 @@ function saveCustomDirectives(ds: CustomDirective[]) {
   }
 }
 
+// Device-level prefs (spec §12.3 transport binding, §12.8 motion) — global, not
+// per-project: they follow the machine/room, not the song.
+const LS_PREFS = 'refrain.prefs';
+interface Prefs {
+  transportKey: TransportKey;
+  motion: MotionPref;
+  f5NoticeSeen: boolean;
+}
+function loadPrefs(): Prefs {
+  const def: Prefs = { transportKey: 'mod-shift-enter', motion: 'system', f5NoticeSeen: false };
+  try {
+    const raw = localStorage.getItem(LS_PREFS);
+    return raw ? { ...def, ...(JSON.parse(raw) as Partial<Prefs>) } : def;
+  } catch {
+    return def;
+  }
+}
+function savePrefs(p: Prefs) {
+  try {
+    localStorage.setItem(LS_PREFS, JSON.stringify(p));
+  } catch {
+    /* noop */
+  }
+}
+
+/** Resolve whether motion should be reduced right now (spec §12.8): the manual
+ *  choice overrides the OS media query in either direction. */
+export function motionIsReduced(pref: MotionPref): boolean {
+  if (pref === 'reduced') return true;
+  if (pref === 'full') return false;
+  try {
+    return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Human label for the active transport binding (spec §12.3) — the titlebar and
+ *  hints read this, never a hardcoded key, so the UI can't lie about the key. */
+export function transportKeyLabel(k: TransportKey): string {
+  return k === 'f5' ? 'F5' : '⌘⇧⏎';
+}
+
 interface VState {
   muted: boolean;
   solo: boolean;
@@ -121,7 +174,7 @@ interface RefrainState {
 
   messages: MaestroMessage[];
   maestroBusy: boolean;
-  maestroThinking: boolean; // fast (cheap, no trace) vs thinking (strong, reasoned)
+  effort: MaestroEffort; // per-turn effort override; composes with routing (spec §12.4)
 
   stagedEdit: StagedEdit | null;
   hunkEnabled: Record<string, boolean>;
@@ -140,8 +193,20 @@ interface RefrainState {
   pins: ContextPin[];
   arcSelection: ArcSelection | null;
 
-  // stage lenses (spec §05)
+  // stage lenses (spec §05, §12.1, §12.5)
   lenses: LensId[];
+  miniRoll: Record<string, MiniRollMode>; // per-voice inline roll mode (spec §12.5)
+
+  // device prefs — transport binding (spec §12.3) + reduced motion (spec §12.8)
+  transportKey: TransportKey;
+  motion: MotionPref;
+  f5NoticeSeen: boolean;
+
+  // MIDI sync-out (spec §12.7) — the Cycle as master
+  midiOn: boolean;
+
+  // pending voice-granular merge awaiting conflict resolution (spec §12.6)
+  pendingMerge: (MergeResult & { theirsId: string; theirsLabel: string }) | null;
 
   // the Prompter (spec §04)
   prompterCards: PrompterCard[];
@@ -203,19 +268,26 @@ interface RefrainState {
   setRoleProvider: (roleId: RoleRoute['id'], provider: Provider['id'], model: string) => void;
   toggleLocalOnly: () => void;
 
-  // maestro agent
-  toggleThinking: () => void;
+  // maestro agent (spec §12.4)
+  setEffort: (e: MaestroEffort) => void;
+  /** Reconcile the effort toggle with a role's routing for a turn (spec §12.4). */
+  resolveTurnEffort: (roleId: RoleRoute['id'], isTask: boolean) => { thinking: boolean; trace: boolean };
 
   // seeded generation (spec §07)
   reseed: (mode: 'same' | 'nudge' | 'new') => void;
 
-  // history / time-travel (spec §07)
+  // history / time-travel (spec §07) + voice-granular merge (spec §12.6)
   rewind: (commitId: string) => void;
   forkFrom: (commitId: string) => void;
   reproduceCommit: (commitId: string) => void;
+  mergeInto: (otherCommitId: string) => void;
+  resolveMerge: (choices: Record<string, ConflictChoice>) => void;
+  cancelMerge: () => void;
 
-  // editor context pins (spec §02)
-  addPin: (pin: Omit<ContextPin, 'id'>) => void;
+  // editor context pins (spec §02, §12.2)
+  addPin: (pin: Omit<ContextPin, 'id'>) => string;
+  updatePin: (id: string, patch: Partial<Omit<ContextPin, 'id'>>) => void;
+  extendLastPin: (endLine: number) => void;
   removePin: (pinId: string) => void;
   clearPins: () => void;
 
@@ -223,8 +295,15 @@ interface RefrainState {
   setArcSelection: (arc: ArcSelection | null) => void;
   applyArcToVoice: (voiceId?: string) => void;
 
-  // stage lenses (spec §05)
+  // stage lenses (spec §05, §12.1, §12.5)
   toggleLens: (id: LensId) => void;
+  cycleMiniRoll: (voiceId: string) => void;
+
+  // device prefs (spec §12.3, §12.7, §12.8)
+  setTransportKey: (k: TransportKey) => void;
+  setMotion: (m: MotionPref) => void;
+  applyMotion: () => void;
+  toggleMidi: () => Promise<void>;
 
   // the Prompter (spec §04)
   refreshPrompter: () => void;
@@ -373,6 +452,23 @@ export const useStore = create<RefrainState>((set, get) => {
     return e ? applyEnabled(e.oldCode, e.newCode, get().hunkEnabled) : get().score;
   }
 
+  /** Pinned ranges as an explicit focus block for a Maestro turn (spec §12.2:
+   *  "point the Maestro at exactly the lines you mean"). Sorted in gutter order so
+   *  "swap these two" is unambiguous; empty when nothing is pinned (whole file). */
+  function pinnedContext(): string {
+    const pins = get().pins;
+    if (!pins.length) return '';
+    const lines = get().score.split('\n');
+    const blocks = [...pins]
+      .sort((a, b) => a.startLine - b.startLine)
+      .map((p) => {
+        const src = lines.slice(p.startLine - 1, p.endLine).join('\n');
+        const label = `${p.voiceId ? '$' + p.voiceId + ' ' : ''}L${p.startLine}${p.endLine !== p.startLine ? '–' + p.endLine : ''}`;
+        return `# ${label}\n${src}`;
+      });
+    return `\n\nThe user pinned these ranges as the focus — scope the edit to them, in this order:\n${blocks.join('\n')}`;
+  }
+
   /**
    * Push a committed state onto the branchable history tree (spec §07). Parent
    * is the current HEAD, so a linear session grows a line and a rewind+edit
@@ -381,7 +477,7 @@ export const useStore = create<RefrainState>((set, get) => {
   function pushCommit(
     label: string,
     provenance: Provenance,
-    opts?: { parked?: boolean; score?: string; parentId?: string | null; force?: boolean },
+    opts?: { parked?: boolean; score?: string; parentId?: string | null; force?: boolean; mergeParentId?: string | null },
   ): string {
     const st = get();
     const parentId = opts?.parentId !== undefined ? opts.parentId : st.headId;
@@ -402,6 +498,7 @@ export const useStore = create<RefrainState>((set, get) => {
       scenes: JSON.parse(JSON.stringify(st.scenes)),
       provenance,
       parked: opts?.parked,
+      mergeParentId: opts?.mergeParentId ?? undefined,
     };
     set({ history: [...st.history, commit], headId: opts?.parked ? st.headId : commit.id });
     persistProject();
@@ -420,17 +517,21 @@ export const useStore = create<RefrainState>((set, get) => {
       // The in-memory tree stays complete; only the persisted tail is capped.
       const MAX_PERSISTED = 400;
       const history = s.history.length > MAX_PERSISTED ? s.history.slice(-MAX_PERSISTED) : s.history;
+      // don't persist a headId that fell outside the retained window (a rewind to
+      // an old node) — coerce it into range so reload can't orphan HEAD.
+      const headId = history.some((c) => c.id === s.headId) ? s.headId : history.length ? history[history.length - 1].id : null;
       const blob: ProjectBlob = {
         id: s.projectId,
         name: s.projectName,
         score: s.score,
         committed: s.committed,
         history,
-        headId: s.headId,
+        headId,
         scenes: s.scenes,
         seed: s.seed,
         voiceState: s.voiceState,
         customDirectives: s.customDirectives,
+        effort: s.effort,
         updated: Date.now(),
       };
       saveProject(blob);
@@ -454,6 +555,7 @@ export const useStore = create<RefrainState>((set, get) => {
       headId: blob.headId ?? (blob.history?.length ? blob.history[blob.history.length - 1].id : rootCommit.id),
       seed: blob.seed ?? randomSeed(),
       customDirectives: blob.customDirectives ?? get().customDirectives,
+      effort: blob.effort ?? 'auto',
       stagedEdit: null,
       hunkEnabled: {},
       laneSet: null,
@@ -475,6 +577,8 @@ export const useStore = create<RefrainState>((set, get) => {
     scenes: [],
     provenance: { source: 'init', when: Date.now() },
   };
+
+  const prefs0 = loadPrefs();
 
   return {
     theme: 'dark',
@@ -504,7 +608,7 @@ export const useStore = create<RefrainState>((set, get) => {
       },
     ],
     maestroBusy: false,
-    maestroThinking: false,
+    effort: 'auto',
 
     stagedEdit: null,
     hunkEnabled: {},
@@ -522,6 +626,14 @@ export const useStore = create<RefrainState>((set, get) => {
     arcSelection: null,
 
     lenses: ['cycle', 'meters'],
+    miniRoll: {},
+
+    transportKey: prefs0.transportKey,
+    motion: prefs0.motion,
+    f5NoticeSeen: prefs0.f5NoticeSeen,
+
+    midiOn: false,
+    pendingMerge: null,
 
     prompterCards: [],
     prompterMuted: false,
@@ -563,7 +675,20 @@ export const useStore = create<RefrainState>((set, get) => {
 
     setScore: (code, opts) => {
       const voices = buildVoices(code, get().voiceState);
-      set({ score: code, voices });
+      // A pin anchors to its voice's AST node, not the raw line number (spec
+      // §12.2): remap voice-pins to the voice's new span so typing a line above
+      // doesn't smear the selection; drop pins whose voice was deleted.
+      const pins = get().pins;
+      const remapped = pins.some((p) => p.voiceId)
+        ? pins
+            .map((p) => {
+              if (!p.voiceId) return p;
+              const v = voices.find((vv) => vv.id === p.voiceId);
+              return v ? { ...p, startLine: v.startLine + 1, endLine: v.endLine + 1 } : null;
+            })
+            .filter((p): p is ContextPin => p !== null)
+        : pins;
+      set({ score: code, voices, ...(remapped !== pins ? { pins: remapped } : {}) });
       scheduleTicks();
       scheduleHandCommit();
       if (opts?.reaudition && get().playing) evalCurrent(code);
@@ -597,6 +722,7 @@ export const useStore = create<RefrainState>((set, get) => {
       // keep running (engine.panic evaluates `silence`, never stop()), so the
       // safest exit looks safe (FIX §10). playing:false stops edits auto-sounding.
       await engine.panic();
+      midi.allNotesOff(); // PANIC reaches the whole rig — all-notes-off, every channel (spec §12.7)
       set({ playing: false, transportLive: engine.started });
       get().log('PANIC — cut to silence; clock still turning', 'warning');
     },
@@ -623,8 +749,10 @@ export const useStore = create<RefrainState>((set, get) => {
       let remainder = 1 - phase;
       if (remainder < 0.2) remainder += 1;
       setTimeout(() => {
-        // only silence if the user hasn't restarted playback in the meantime
-        if (!get().playing) engine.panic();
+        // silence at the boundary ONLY if HUSH is still in force: not replaying,
+        // and the transport is still live (a full stop already silenced it — don't
+        // resurrect a stopped scheduler by evaluating `silence`).
+        if (!get().playing && get().transportLive) engine.panic();
       }, Math.round((remainder / cps) * 1000));
     },
 
@@ -737,7 +865,7 @@ export const useStore = create<RefrainState>((set, get) => {
               provider: route2.provider,
               model: route2.model,
               system: MAESTRO_SYSTEM + '\nAnswer the question about the music. Do NOT change code; explain it plainly and briefly.',
-              user: `Current score:\n${get().score}\n\nQuestion: ${q}`,
+              user: `Current score:\n${get().score}\n\nQuestion: ${q}${pinnedContext()}`,
             });
             set((s) => ({ messages: s.messages.map((m) => (m.id === placeholder ? { ...m, shape: 'answer', text: reply || localExplain(q), pending: false } : m)) }));
           } catch (e: any) {
@@ -760,11 +888,12 @@ export const useStore = create<RefrainState>((set, get) => {
             provider: route2.provider,
             model: route2.model,
             system: MAESTRO_SYSTEM,
-            user: `Current score:\n\`\`\`\n${stagedBase()}\n\`\`\`\n\nRequest: ${req}`,
+            user: `Current score:\n\`\`\`\n${stagedBase()}\n\`\`\`\n\nRequest: ${req}${pinnedContext()}`,
           });
           const code = extractCode(reply);
           if (code && code !== get().score) {
-            const prov: Provenance = { source: 'llm', prompt: req, model: llmModelLabel('generation'), thinking: get().maestroThinking, when: Date.now(), cycle: nowCycle() };
+            const { thinking } = get().resolveTurnEffort('generation', true);
+            const prov: Provenance = { source: 'llm', prompt: req, model: llmModelLabel('generation'), thinking, effort: get().effort, when: Date.now(), cycle: nowCycle() };
             stageEditInternal({ summary: stripCode(reply) || 'Maestro edit.', newCode: code, provenance: prov });
             set((s) => ({ messages: s.messages.map((m) => (m.id === placeholder ? { ...m, shape: 'diff', editId: get().stagedEdit?.id, text: stripCode(reply) || 'Edit staged — auditioning on the next cycle.', pending: false } : m)) }));
           } else {
@@ -878,7 +1007,13 @@ export const useStore = create<RefrainState>((set, get) => {
       const reasoning =
         'A break needs space, then tension, then release. Mask the rhythm section out for six bars, fill the gap with a riser so the ear has somewhere to go, and restore with an accent so the return lands. ' +
         (kept.length ? `${kept.map((v) => '$' + v.id).join(', ')} carr${kept.length > 1 ? 'y' : 'ies'} the harmony through the hole so the key never disappears.` : '');
-      const prov: Provenance = { source: 'agent', prompt: '/break', model: llmModelLabel('generation') ?? 'deterministic', thinking: get().maestroThinking, when: Date.now(), cycle: nowCycle() };
+      // `thinking` records whether a model's reasoning tier was actually spent
+      // (honest: offline/deterministic → false). The visible reasoning TRACE of
+      // this deterministic agent follows the effort tier directly — shown in
+      // auto/thinking, hidden in fast (spec §12.4) — so it stays useful offline.
+      const { thinking } = get().resolveTurnEffort('generation', true);
+      const trace = get().effort !== 'fast';
+      const prov: Provenance = { source: 'agent', prompt: '/break', model: llmModelLabel('generation') ?? 'deterministic', thinking, effort: get().effort, when: Date.now(), cycle: nowCycle() };
 
       stageEditInternal({ summary: 'Break staged — rhythm drops for six bars, a riser fills 7–8, everything returns hard on bar 9. Auditioning now; commits on the next phrase.', newCode, directive: 'break', provenance: prov });
       set((s) => ({
@@ -890,7 +1025,9 @@ export const useStore = create<RefrainState>((set, get) => {
             shape: 'diff',
             editId: get().stagedEdit?.id,
             text: 'Break staged. The rhythm section drops for six bars, a riser fills 7–8, and everything returns on bar 9 with a sforzando. The pad holds the harmony through the gap. *Auditioning now — commits on the next phrase.*',
-            reasoning,
+            // the reasoning TRACE only shows when the effort tier is thinking (spec §12.4:
+            // fast = no trace); the plan + tool log are always visible (§03 transparency)
+            reasoning: trace ? reasoning : undefined,
             plan,
             toolLog,
           },
@@ -1081,8 +1218,18 @@ export const useStore = create<RefrainState>((set, get) => {
     },
     toggleLocalOnly: () => set((s) => ({ localOnly: !s.localOnly })),
 
-    // -------- maestro agent --------
-    toggleThinking: () => set((s) => ({ maestroThinking: !s.maestroThinking })),
+    // -------- maestro agent (spec §12.4) --------
+    // The effort toggle is remembered per project (persisted with the blob), so a
+    // sketch pad can stay fast while a finished piece sits in thinking.
+    setEffort: (e) => {
+      set({ effort: e });
+      persistProject();
+    },
+    resolveTurnEffort: (roleId, isTask) => {
+      const route = provForRole(roleId);
+      const reasoning = route ? hasReasoningTier(route.provider.id, route.model) : false;
+      return resolveEffort(get().effort, isTask, reasoning);
+    },
 
     // -------- seeded generation (spec §07) --------
     reseed: (mode) => {
@@ -1151,12 +1298,54 @@ export const useStore = create<RefrainState>((set, get) => {
       get().log(`reproduced seed ${seedHex(seed)}`, 'info');
     },
 
-    // -------- editor context pins (spec §02) --------
-    addPin: (pin) =>
+    // Merge a branch commit into HEAD, voice-granular (spec §12.6). Disjoint
+    // voices union automatically; same-voice edits raise a conflict card. The
+    // merged state joins the tree with the branch as a SECOND parent.
+    mergeInto: (otherCommitId) => {
+      const st = get();
+      const ours = st.history.find((c) => c.id === st.headId);
+      const theirs = st.history.find((c) => c.id === otherCommitId);
+      if (!ours || !theirs || ours.id === theirs.id) return;
+      const baseCommit = lca(st.history, ours.id, theirs.id);
+      const result = mergeScores(baseCommit?.score ?? ours.score, ours.score, theirs.score);
+      if (result.conflicts.length === 0) {
+        finalizeMerge(result, theirs, {});
+      } else {
+        set({ pendingMerge: { ...result, theirsId: theirs.id, theirsLabel: theirs.label } });
+      }
+    },
+    resolveMerge: (choices) => {
+      const pm = get().pendingMerge;
+      if (!pm) return;
+      const theirs = get().history.find((c) => c.id === pm.theirsId);
+      set({ pendingMerge: null });
+      if (theirs) finalizeMerge(pm, theirs, choices);
+    },
+    cancelMerge: () => set({ pendingMerge: null }),
+
+    // -------- editor context pins (spec §02, §12.2) --------
+    addPin: (pin) => {
+      // collapse an identical range; otherwise append in click order. The gutter
+      // ORDER (§12.2: "swap these two" is unambiguous) is imposed at the point a
+      // turn consumes the pins — see pinnedContext(), which sorts by line.
+      const existing = get().pins.find((p) => p.startLine === pin.startLine && p.endLine === pin.endLine);
+      if (existing) return existing.id;
+      const pinId = id('pin');
+      set((s) => ({ pins: [...s.pins, { ...pin, id: pinId }] }));
+      return pinId;
+    },
+    updatePin: (pinId, patch) =>
+      set((s) => ({ pins: s.pins.map((p) => (p.id === pinId ? { ...p, ...patch } : p)) })),
+    // ⇧-click extends the LAST range to the clicked line (spec §12.2).
+    extendLastPin: (endLine) =>
       set((s) => {
-        // collapse an identical range; otherwise append
-        if (s.pins.some((p) => p.startLine === pin.startLine && p.endLine === pin.endLine)) return {};
-        return { pins: [...s.pins, { ...pin, id: id('pin') }] };
+        if (!s.pins.length) return {};
+        const pins = [...s.pins];
+        const last = pins[pins.length - 1];
+        const lo = Math.min(last.startLine, endLine);
+        const hi = Math.max(last.endLine, endLine);
+        pins[pins.length - 1] = { ...last, startLine: lo, endLine: hi, voiceId: undefined };
+        return { pins };
       }),
     removePin: (pinId) => set((s) => ({ pins: s.pins.filter((p) => p.id !== pinId) })),
     clearPins: () => set({ pins: [] }),
@@ -1193,9 +1382,58 @@ export const useStore = create<RefrainState>((set, get) => {
       }));
     },
 
-    // -------- stage lenses (spec §05) --------
+    // -------- stage lenses (spec §05, §12.1, §12.5) --------
     toggleLens: (id2) =>
       set((s) => ({ lenses: s.lenses.includes(id2) ? s.lenses.filter((l) => l !== id2) : [...s.lenses, id2] })),
+    // The inline mini-roll cycles per voice: roll → spark → off (spec §12.5).
+    cycleMiniRoll: (voiceId) =>
+      set((s) => {
+        const cur = s.miniRoll[voiceId] ?? 'roll';
+        const next: MiniRollMode = cur === 'roll' ? 'spark' : cur === 'spark' ? 'off' : 'roll';
+        return { miniRoll: { ...s.miniRoll, [voiceId]: next } };
+      }),
+
+    // -------- device prefs (spec §12.3, §12.7, §12.8) --------
+    setTransportKey: (k) => {
+      // one-time "this will need to override reload" notice on the first F5 opt-in
+      // (spec §12.3); the flag latches so the notice never fires twice.
+      const firstF5 = k === 'f5' && !get().f5NoticeSeen;
+      const f5NoticeSeen = get().f5NoticeSeen || k === 'f5';
+      set({ transportKey: k, f5NoticeSeen });
+      savePrefs({ transportKey: k, motion: get().motion, f5NoticeSeen });
+      if (firstF5) {
+        get().log('F5 now plays/pauses — it overrides the browser reload key. Switch back in Settings → Keymap anytime.', 'warning');
+      } else {
+        get().log(k === 'f5' ? 'transport → F5' : 'transport → ⌘⇧⏎', 'info');
+      }
+    },
+    setMotion: (m) => {
+      set({ motion: m });
+      savePrefs({ transportKey: get().transportKey, motion: m, f5NoticeSeen: get().f5NoticeSeen });
+      get().applyMotion();
+      get().log(`motion → ${m}`, 'info');
+    },
+    // Reflect the resolved reduced-motion state onto <html> so CSS can respond
+    // (decorative keyframes stop; information-bearing motion is handled in JS).
+    applyMotion: () => {
+      try {
+        document.documentElement.setAttribute('data-reduced-motion', motionIsReduced(get().motion) ? 'on' : 'off');
+      } catch {
+        /* no DOM (tests) */
+      }
+    },
+    toggleMidi: async () => {
+      if (get().midiOn) {
+        midi.allNotesOff();
+        midi.disable(); // stop the clock loop, not just the flag
+        set({ midiOn: false });
+        get().log('MIDI sync-out off', 'info');
+        return;
+      }
+      const ok = await midi.enable();
+      set({ midiOn: ok });
+      get().log(ok ? 'MIDI sync-out on — the Cycle is the master' : `MIDI unavailable: ${midi.error ?? 'no access'}`, ok ? 'success' : 'warning');
+    },
 
     // -------- the Prompter (spec §04) --------
     refreshPrompter: () => {
@@ -1330,6 +1568,41 @@ export const useStore = create<RefrainState>((set, get) => {
     }
   }
 
+  /**
+   * Finalize a voice-granular merge (spec §12.6): apply the resolved score,
+   * commit it with the branch as a second parent, and — for voices resolved
+   * "layer as lanes" / "audition both" — offer the branch's take as an alt lane.
+   */
+  function finalizeMerge(result: MergeResult, theirs: Commit, choices: Record<string, ConflictChoice>) {
+    const merged = applyResolutions(result, choices);
+    const voices = buildVoices(merged, get().voiceState);
+    const parsedCps = parseScore(merged).cps;
+    // global settings (scenes) merge last-writer-wins: HEAD keeps its scenes and
+    // gains any the branch added; the loser survives in the branch commit (§12.6).
+    const ourNames = new Set(get().scenes.map((s) => s.name));
+    const mergedScenes = [...get().scenes, ...(theirs.scenes ?? []).filter((s) => !ourNames.has(s.name))];
+    set({ score: merged, committed: merged, voices, scenes: mergedScenes, stagedEdit: null, hunkEnabled: {}, ...(parsedCps != null ? { cps: parsedCps } : {}) });
+    pushCommit(`merge · ${theirs.label}`, { source: 'merge', prompt: `merge ${theirs.label}`, when: Date.now(), cycle: nowCycle() }, { mergeParentId: theirs.id, force: true });
+    scheduleTicks();
+    if (get().playing) evalCurrent(merged);
+
+    const layer = result.conflicts.filter((c) => (choices[c.voiceId] === 'lanes' || choices[c.voiceId] === 'audition') && c.theirs);
+    if (layer.length) {
+      const seed = get().seed;
+      const lanes = layer.map((c, i) => {
+        const altId = `${c.voiceId}_alt`;
+        const body = (c.theirs as string).replace(/^\s*\$[^:]+:\s*/, '');
+        return { id: id('ln'), label: String.fromCharCode(65 + i), name: `${c.voiceId} · their take`, desc: 'from the merged branch', voiceId: altId, code: `$${altId}: ${body}`, shape: 'flat' as const };
+      });
+      const laneSet: LaneSet = { id: id('ls'), prompt: `audition merged ${layer.map((c) => '$' + c.voiceId).join(' ')}`, lanes, soloId: null, committedId: null, seed };
+      set((s) => ({ laneSet, messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'lanes', laneSetId: laneSet.id, text: `Merged **${theirs.label}**. Their take on ${layer.map((c) => '`$' + c.voiceId + '`').join(', ')} is parked as a lane — solo to A/B, commit to keep.` }] }));
+    } else {
+      const n = result.clean.length;
+      set((s) => ({ messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'answer', text: `Merged **${theirs.label}** into HEAD — ${n} voice${n === 1 ? '' : 's'} unioned cleanly${result.conflicts.length ? `, ${result.conflicts.length} conflict${result.conflicts.length === 1 ? '' : 's'} resolved by ear` : ''}. Committed on the next phrase.` }] }));
+    }
+    get().log(`merged “${theirs.label}”`, 'success');
+  }
+
   /** A short, human commit label from a staged edit's summary/directive. */
   function commitLabel(edit: StagedEdit): string {
     if (edit.directive) return `/${edit.directive}${edit.targetVoiceId ? ` $${edit.targetVoiceId}` : ''}`;
@@ -1349,6 +1622,23 @@ export const useStore = create<RefrainState>((set, get) => {
       .join(', ');
   }
 });
+
+// ---- voice-granular merge: lowest common ancestor of two commits (spec §12.6) ----
+function lca(history: Commit[], aId: string, bId: string): Commit | null {
+  const byId = new Map(history.map((c) => [c.id, c]));
+  const ancestors = new Set<string>();
+  let cur: Commit | undefined = byId.get(aId);
+  while (cur) {
+    ancestors.add(cur.id);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  let b: Commit | undefined = byId.get(bId);
+  while (b) {
+    if (ancestors.has(b.id)) return b;
+    b = b.parentId ? byId.get(b.parentId) : undefined;
+  }
+  return null;
+}
 
 // ---- clock-as-target: an arc span → a within-cycle .mask() pattern (spec §06) ----
 function arcToMask(arc: ArcSelection): { pattern: string; label: string } {

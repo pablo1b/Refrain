@@ -37,17 +37,27 @@ export interface DiffHunk {
  * model, and the seed. This is what makes generation reproducible and the
  * history a *musical* changelog rather than a pile of text diffs.
  */
-export type ProvenanceSource = 'you' | 'directive' | 'agent' | 'lanes' | 'llm' | 'prompter' | 'init';
+export type ProvenanceSource = 'you' | 'directive' | 'agent' | 'lanes' | 'llm' | 'prompter' | 'init' | 'merge';
 export interface Provenance {
   source: ProvenanceSource;
   prompt?: string; // the natural-language ask, if any
   directive?: string; // the /verb, if any
   model?: string; // display label, e.g. "Claude Sonnet"
-  thinking?: boolean; // thinking vs fast mode
+  thinking?: boolean; // resolved: did this turn spend the reasoning tier?
+  effort?: MaestroEffort; // the per-turn effort override in force (spec §12.4)
   seed?: number; // visible generation seed (rendered hex, e.g. 0x4F2A)
   when: number; // Date.now() at creation
   cycle?: number; // integer cycle position when created
+  author?: string; // who committed it — attribution in a session (spec §12.9)
 }
+
+/**
+ * Per-turn effort override for the Maestro (spec §12.4). It composes with the
+ * per-role routing table (§09) in ONE direction: routing sets the vendor/model
+ * per role; the toggle moves the EFFORT TIER within that model, never the
+ * vendor. `auto` lets the role decide — tasks think, directives don't.
+ */
+export type MaestroEffort = 'auto' | 'fast' | 'thinking';
 
 /** A proposed, auditioned, reversible edit to the score. Shape 01. */
 export interface StagedEdit {
@@ -66,7 +76,8 @@ export interface StagedEdit {
  * A committed state in the branchable history tree (spec §07). Commits are
  * whole-score snapshots — the thing you can walk, fork and rewind — NOT editor
  * keystrokes. `parentId` gives the tree; `parked` marks a variation fork held on
- * a dashed stub off the main line.
+ * a dashed stub off the main line. `mergeParentId` is the SECOND parent of a
+ * voice-granular merge node (spec §12.6) — the branch reconciled into the line.
  */
 export interface Commit {
   id: string;
@@ -77,6 +88,29 @@ export interface Commit {
   scenes: Scene[]; // arrangement snapshot
   provenance: Provenance;
   parked?: boolean; // a parked variation fork (dashed stub, not on the main line)
+  mergeParentId?: string | null; // second parent of a merge node (spec §12.6)
+}
+
+/**
+ * Voice-granular merge (spec §12.6). Because a Refrain score is a *set of named
+ * voices*, the merge unit is the voice, not the character: two branches that
+ * touched different voices union cleanly and automatically; only two branches
+ * that edited the *same* voice raise a conflict, resolved by ear not by text.
+ */
+export interface VoiceChange {
+  voiceId: string;
+  base: string | null; // the voice's full block at the common ancestor (null = absent)
+  ours: string | null; // …on HEAD
+  theirs: string | null; // …on the branch being merged in
+}
+export type ConflictChoice = 'mine' | 'theirs' | 'lanes' | 'audition';
+export interface MergeResult {
+  /** Auto-merged score: disjoint voice edits unioned, conflicts left as OURS. */
+  merged: string;
+  clean: string[]; // voiceIds merged automatically (disjoint)
+  conflicts: VoiceChange[]; // voiceIds edited on both sides → resolve by ear
+  cpsWinner: 'ours' | 'theirs' | null; // global setcps last-writer-wins
+  base: string; // the common-ancestor score used
 }
 
 export type MaestroShape = 'diff' | 'lanes' | 'answer' | 'thinking' | 'error' | 'plan';
@@ -160,8 +194,22 @@ export interface ContextPin {
   endLine: number;
 }
 
-/** Stage lenses — honest ways to see the sound, stackable (spec §05). */
-export type LensId = 'cycle' | 'tracker' | 'spectrum' | 'wheel' | 'bloom' | 'sparklines' | 'meters';
+/** Stage lenses — honest ways to see the sound, stackable (spec §05, §12.1, §12.5).
+ *  `score` engraves pitched voices to a staff; `miniroll` shows the inline
+ *  per-voice piano-roll in the editor gutter. */
+export type LensId =
+  | 'cycle'
+  | 'tracker'
+  | 'spectrum'
+  | 'wheel'
+  | 'bloom'
+  | 'sparklines'
+  | 'meters'
+  | 'score'
+  | 'miniroll';
+
+/** Inline gutter mini-roll display per voice (spec §12.5). */
+export type MiniRollMode = 'roll' | 'spark' | 'off';
 
 /** A Prompter suggestion — an observation against the parsed tree (spec §04). */
 export type PrompterKind = 'static' | 'clash' | 'empty' | 'ghost';
@@ -205,6 +253,8 @@ export type Surface =
   | 'history'
   | 'projects'
   | 'directives'
+  | 'settings' // Keymap + Accessibility (spec §12.3, §12.8)
+  | 'ports' // MIDI / OSC sync-out (spec §12.7)
   | null;
 
 export interface LogLine {
@@ -238,4 +288,31 @@ export interface ProjectMeta {
   scenes: number;
   commits: number;
   updated: number; // Date.now()
+}
+
+/**
+ * The transport (play/pause) binding (spec §12.3). On the desktop shell F5 is
+ * ours outright; in the browser tier F5 is the reload key, so the default is
+ * `mod-shift-enter` (⌘⇧⏎ — never browser-reserved). F5 is an opt-in alias.
+ */
+export type TransportKey = 'mod-shift-enter' | 'f5';
+
+/**
+ * Reduced-motion preference (spec §12.8). `system` follows the OS media query;
+ * a manual choice in Settings → Accessibility overrides it in either direction.
+ * The contract: information-bearing motion degrades to discrete steps; purely
+ * decorative motion stops.
+ */
+export type MotionPref = 'system' | 'full' | 'reduced';
+
+/**
+ * A MIDI output the Cycle can drive as sync master (spec §12.7). The rule is
+ * simple: the Cycle is always the master — Refrain sends, it does not chase.
+ * A per-port latency offset compensates hardware/buffer lag.
+ */
+export interface MidiPort {
+  id: string;
+  name: string;
+  enabled: boolean; // send 24-PPQN clock + transport to this port
+  latencyMs: number; // ± offset so an external kick lands with the internal one
 }

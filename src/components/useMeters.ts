@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { engine } from '../audio/strudelEngine';
+import { useReducedMotion } from './useReducedMotion';
 
 // ---------------------------------------------------------------------------
 // Honest metering (spec §05/§10 FIX). The v0.1 meters were a 130ms random walk
@@ -31,15 +32,16 @@ export function useMeters(): Meters {
   const voices = useStore((s) => s.voices);
   const events = useStore((s) => s.events);
   const playing = useStore((s) => s.playing);
+  const reduced = useReducedMotion();
   const anySolo = voices.some((v) => v.solo);
 
   const [meters, setMeters] = useState<Meters>({ levels: {}, master: 0, headroomDb: -Infinity, cpu: 0 });
   const env = useRef<Record<string, number>>({});
   const target = useRef<Record<string, number>>({});
+  const peakHold = useRef<Record<string, number>>({}); // held peak between reduced-motion emits (§12.8)
   const lastPhase = useRef(0);
 
   useEffect(() => {
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let last = performance.now();
     let lastEmit = 0;
@@ -86,6 +88,8 @@ export function useMeters(): Meters {
         const cur = env.current[v.id] ?? 0;
         const tgt = target.current[v.id];
         env.current[v.id] = tgt > cur ? cur + (tgt - cur) * atk : tgt; // attack rises, release falls with target
+        // hold the peak seen since the last (slow) reduced-motion emit
+        peakHold.current[v.id] = Math.max(peakHold.current[v.id] ?? 0, env.current[v.id]);
       }
       lastPhase.current = phase;
 
@@ -106,12 +110,17 @@ export function useMeters(): Meters {
       // emit — throttled harder under reduced-motion (calm, not jittery). When
       // the transport is stopped we emit ONE settled (zeroed) frame, then stop
       // re-rendering the Stage until playback resumes (no idle rAF re-render drain).
-      const emitEvery = reduced ? 200 : 40;
+      // reduced motion: refresh ~4 Hz and report the HELD PEAK, not the
+      // instantaneous ballistic level — calm, numeric, still truthful (§12.8).
+      const emitEvery = reduced ? 250 : 40;
       if (now - lastEmit >= emitEvery && (running || !idleEmitted)) {
         lastEmit = now;
         idleEmitted = !running;
         const levels: Record<string, number> = {};
-        for (const v of voices) levels[v.id] = +(env.current[v.id] ?? 0).toFixed(3);
+        for (const v of voices) {
+          levels[v.id] = +((reduced ? peakHold.current[v.id] : env.current[v.id]) ?? 0).toFixed(3);
+          peakHold.current[v.id] = env.current[v.id] ?? 0; // let the peak decay toward the current level
+        }
         setMeters({ levels, master: +master.toFixed(3), headroomDb, cpu: running ? Math.round(cpuEMA) : 0 });
       }
       raf = requestAnimationFrame(loop);
@@ -119,7 +128,7 @@ export function useMeters(): Meters {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voices, events, playing, anySolo]);
+  }, [voices, events, playing, anySolo, reduced]);
 
   return meters;
 }

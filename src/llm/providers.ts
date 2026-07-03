@@ -7,7 +7,7 @@
 // deterministic; the LLM is an enhancement for free-form requests.
 // ---------------------------------------------------------------------------
 
-import type { Provider, RoleRoute } from '../types';
+import type { Provider, RoleRoute, MaestroEffort } from '../types';
 
 export function defaultProviders(): Provider[] {
   return [
@@ -64,6 +64,35 @@ export function modelBadge(model: string): { cost: number; latency: string } {
   if (/gpt-4o|o3/i.test(model)) return { cost: 3, latency: '~600ms' };
   if (/llama|mistral|qwen|phi/i.test(model)) return { cost: 0, latency: 'varies' };
   return { cost: 2, latency: '~300ms' };
+}
+
+/**
+ * Which provider/model exposes a reasoning ("thinking") tier (spec §12.4). This
+ * is what lets the fast/thinking toggle move the effort tier *within* the role's
+ * model. A vendor with no reasoning tier greys the toggle to fast — so routing
+ * and the toggle can never contradict.
+ */
+export function hasReasoningTier(provider: Provider['id'], model: string): boolean {
+  if (provider === 'anthropic') return true; // extended thinking on opus/sonnet/haiku
+  if (provider === 'openai') return /^o\d/i.test(model); // o3 / o3-mini reason; 4o does not
+  return false; // gemini flash, local llama: no dedicated reasoning tier
+}
+
+/**
+ * Reconcile the per-turn effort toggle with the routing table (spec §12.4).
+ * Routing owns the vendor/model per role; the toggle only moves the EFFORT TIER
+ * within it, never the vendor. `auto` lets the role decide — tasks think,
+ * directives don't. If the role's model has no reasoning tier, effort collapses
+ * to fast (the toggle is greyed in the UI).
+ */
+export function resolveEffort(
+  effort: MaestroEffort,
+  isTask: boolean,
+  reasoning: boolean,
+): { thinking: boolean; trace: boolean } {
+  if (!reasoning || effort === 'fast') return { thinking: false, trace: false };
+  if (effort === 'thinking') return { thinking: true, trace: true };
+  return { thinking: isTask, trace: isTask }; // auto
 }
 
 /** Plain-language recommendation per role — because the right answer depends

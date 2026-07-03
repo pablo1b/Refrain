@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import { engine } from '../audio/strudelEngine';
 import { CLOCK_RINGS } from '../theme/tokens';
+import { useReducedMotion } from './useReducedMotion';
 
 // The Cycle — a radial reading of one cycle. Each voice is a ring, each event a
 // tick, a single playhead sweeps the present (spec §05). The hand is driven by
@@ -45,6 +46,7 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
   const applyArc = useStore((s) => s.applyArcToVoice);
   const stagedEdit = useStore((s) => s.stagedEdit);
   const transportLive = useStore((s) => s.transportLive);
+  const reduced = useReducedMotion();
   const anySolo = voices.some((v) => v.solo);
   const handRef = useRef<SVGGElement>(null);
   const boundaryRef = useRef<SVGPathElement>(null);
@@ -53,14 +55,16 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
 
   useEffect(() => {
     let raf = 0;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let lastDeg = -1;
     const loop = () => {
       if (engine.started) {
         const n = engine.now();
-        const phase = ((n % 1) + 1) % 1;
+        let phase = ((n % 1) + 1) % 1;
+        // reduced motion: the playhead still tells time, but steps once per 1/16
+        // rather than sweeping continuously (spec §12.8).
+        if (reduced) phase = Math.floor(phase * 16) / 16;
         const deg = phase * 360;
-        if (handRef.current && (!reduced || Math.abs(deg - lastDeg) > 22)) {
+        if (handRef.current && deg !== lastDeg) {
           handRef.current.style.transform = `rotate(${deg}deg)`;
           lastDeg = deg;
         }
@@ -74,7 +78,7 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [stagedEdit]);
+  }, [stagedEdit, reduced]);
 
   const handColor = playing ? 'var(--live)' : transportLive ? 'var(--maestro)' : 'var(--text-dim)';
 

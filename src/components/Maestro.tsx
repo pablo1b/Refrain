@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
+import { hasReasoningTier } from '../llm/providers';
 import { renderRich } from './rich';
 import { DirectivePalette, filterPalette, type PaletteItem } from './DirectivePalette';
 import { VariationLanes } from './VariationLanes';
-import type { MaestroMessage, PlanStep, ToolCall } from '../types';
+import type { MaestroMessage, PlanStep, ToolCall, MaestroEffort } from '../types';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 
@@ -15,8 +16,8 @@ export function Maestro() {
   const roles = useStore((s) => s.roles);
   const providers = useStore((s) => s.providers);
   const localOnly = useStore((s) => s.localOnly);
-  const thinking = useStore((s) => s.maestroThinking);
-  const toggleThinking = useStore((s) => s.toggleThinking);
+  const effort = useStore((s) => s.effort);
+  const setEffort = useStore((s) => s.setEffort);
   const custom = useStore((s) => s.customDirectives);
   const voices = useStore((s) => s.voices);
   const scenes = useStore((s) => s.scenes);
@@ -85,19 +86,20 @@ export function Maestro() {
     setInput('');
   };
 
-  const genProv = providers.find((p) => p.id === roles.find((r) => r.id === 'generation')?.provider);
+  const genRole = roles.find((r) => r.id === 'generation');
+  const genProv = providers.find((p) => p.id === genRole?.provider);
   const modelTag = localOnly ? 'local-only' : genProv?.connected ? `${genProv.label.replace('Anthropic', 'Claude')}` : 'offline · directives';
+  // routing owns the vendor; the effort toggle only moves the tier within it, and
+  // greys to fast when the role's model has no reasoning tier (spec §12.4).
+  const reasoning = !!genRole && hasReasoningTier(genRole.provider, genRole.model);
 
   return (
     <div style={{ borderLeft: '1px solid var(--line-3)', background: 'var(--panel)', display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--line-3)' }}>
         <span style={{ ...mono, fontSize: 11, letterSpacing: '.18em', color: 'var(--maestro)' }}>MAESTRO</span>
         <span style={{ ...mono, fontSize: 10, color: 'var(--text-dim)' }}>agent</span>
-        {/* fast / thinking toggle (spec §03) */}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', background: 'var(--elev)', border: '1px solid var(--line-4)', borderRadius: 7, padding: 2, ...mono, fontSize: 10 }}>
-          <button onClick={() => thinking && toggleThinking()} style={{ padding: '3px 9px', borderRadius: 5, color: thinking ? 'var(--text-2)' : 'var(--live-ink)', background: thinking ? 'transparent' : 'var(--live)', fontWeight: thinking ? 400 : 700 }}>fast</button>
-          <button onClick={() => !thinking && toggleThinking()} style={{ padding: '3px 9px', borderRadius: 5, color: thinking ? 'var(--live-ink)' : 'var(--text-2)', background: thinking ? 'var(--maestro)' : 'transparent', fontWeight: thinking ? 700 : 400 }}>thinking</button>
-        </span>
+        {/* effort toggle: auto/fast/thinking — composes with routing (spec §12.4) */}
+        <EffortToggle effort={effort} reasoning={reasoning} onSet={setEffort} />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, ...mono, fontSize: 10, color: 'var(--text-1)', background: 'var(--elev)', border: '1px solid var(--line-4)', borderRadius: 6, padding: '3px 8px' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: genProv?.connected && !localOnly ? 'var(--maestro)' : 'var(--text-dim)' }} />
           {modelTag}
@@ -163,6 +165,49 @@ export function Maestro() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ---- effort toggle (spec §12.4) ----
+// Three tiers: auto lets the role decide (tasks think, directives don't); fast
+// forces no-trace; thinking spends the reasoning tier + shows the trace. It NEVER
+// re-vendors the call — routing owns that. A vendor with no reasoning tier greys
+// everything but fast, so the two controls can never contradict.
+const EFFORTS: { id: MaestroEffort; label: string; on: string }[] = [
+  { id: 'fast', label: 'fast', on: 'var(--live)' },
+  { id: 'auto', label: 'auto', on: 'var(--select)' },
+  { id: 'thinking', label: 'thinking', on: 'var(--maestro)' },
+];
+function EffortToggle({ effort, reasoning, onSet }: { effort: MaestroEffort; reasoning: boolean; onSet: (e: MaestroEffort) => void }) {
+  const active = reasoning ? effort : 'fast';
+  return (
+    <span
+      title={reasoning ? 'effort tier · routing still picks the model (§12.4)' : 'this role’s model has no reasoning tier — fast only'}
+      style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', background: 'var(--elev)', border: '1px solid var(--line-4)', borderRadius: 7, padding: 2, ...mono, fontSize: 10 }}
+    >
+      {EFFORTS.map((e) => {
+        const isOn = active === e.id;
+        const disabled = !reasoning && e.id !== 'fast';
+        return (
+          <button
+            key={e.id}
+            disabled={disabled}
+            onClick={() => !disabled && onSet(e.id)}
+            style={{
+              padding: '3px 8px',
+              borderRadius: 5,
+              color: isOn ? 'var(--live-ink)' : disabled ? 'var(--text-dim)' : 'var(--text-2)',
+              background: isOn ? e.on : 'transparent',
+              fontWeight: isOn ? 700 : 400,
+              opacity: disabled ? 0.5 : 1,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {e.label}
+          </button>
+        );
+      })}
+    </span>
   );
 }
 
