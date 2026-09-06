@@ -138,6 +138,7 @@ function ProviderRow({ p, first, onKey }: { p: Provider; first: boolean; onKey: 
       <span style={{ fontSize: 14, color: 'var(--text)', width: 78, flex: 'none' }}>
         {p.label}
         {p.local && <span style={{ fontSize: 11, color: 'var(--text-3)' }}> · local</span>}
+        {p.fromEnv && <span style={{ fontSize: 11, color: 'var(--text-3)' }} title="key read from .env.local — typing one here replaces it"> · .env</span>}
       </span>
       <input
         type="password"

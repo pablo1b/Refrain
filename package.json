@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:local": "tsc -b && vite build --mode localdev",
     "preview": "vite preview --port 4173",
+    "preview:local": "npm run build:local && vite preview --port 4173",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:browser": "vitest run --project browser",

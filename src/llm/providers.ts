@@ -107,34 +107,132 @@ export const ROLE_RECOMMENDATION: Record<RoleRoute['id'], { note: string; spend:
 const LS_KEY = 'refrain.providers';
 const LS_ROLES = 'refrain.roles';
 
-export function loadProviders(): Provider[] {
+// --- `.env.local` seeding ---------------------------------------------------
+// A fresh browser profile (a new machine, a QA agent's Chromium) has an empty
+// localStorage and therefore no keys. These helpers let `.env.local` fill the
+// blanks so the app comes up connected. Deliberately narrow:
+//   · fill-blanks only — a key typed in the UI is explicit and always wins;
+//   · dev + `--mode localdev` only — every VITE_ var is inlined into the bundle,
+//     so a production build must never carry one;
+//   · never persisted — the file stays the source of truth for its own key.
+// See `.env.local.example`.
+
+/** The `.env.local` var holding each provider's key ('' = local, no key). */
+const ENV_KEY_VAR: Record<Provider['id'], string> = {
+  anthropic: 'VITE_ANTHROPIC_API_KEY',
+  openai: 'VITE_OPENAI_API_KEY',
+  google: 'VITE_GOOGLE_API_KEY',
+  ollama: '',
+};
+
+/** `import.meta.env`, loosened so tests can pass a plain object. */
+type EnvLike = Record<string, unknown>;
+
+/**
+ * The env, read field-by-field behind a build-time-constant guard. Both halves
+ * matter: Vite replaces a bare `import.meta.env` with a literal of EVERY VITE_
+ * var (keys included) in any build, and it replaces `DEV`/`MODE` with
+ * constants — so this shape lets the minifier drop the whole branch, and the
+ * keys with it, out of a production bundle. Verified by a test below.
+ */
+function readEnv(): EnvLike {
+  if (!(import.meta.env.DEV || import.meta.env.MODE === 'localdev')) return { DEV: false, MODE: import.meta.env.MODE };
+  return {
+    DEV: import.meta.env.DEV,
+    MODE: import.meta.env.MODE,
+    VITE_ANTHROPIC_API_KEY: import.meta.env.VITE_ANTHROPIC_API_KEY,
+    VITE_OPENAI_API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
+    VITE_GOOGLE_API_KEY: import.meta.env.VITE_GOOGLE_API_KEY,
+    VITE_OLLAMA_ENDPOINT: import.meta.env.VITE_OLLAMA_ENDPOINT,
+  };
+}
+
+function envStr(env: EnvLike, name: string): string {
+  const v = env[name];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+/**
+ * `test` is excluded so a developer's real `.env.local` can never make the
+ * suite non-deterministic — the seeding tests pass an explicit env instead.
+ */
+export function envSeedEnabled(env: EnvLike = readEnv()): boolean {
+  const mode = typeof env.MODE === 'string' ? env.MODE : '';
+  if (mode === 'test') return false;
+  return env.DEV === true || mode === 'localdev';
+}
+
+/** Providers whose key `.env.local` supplies, in `defaultProviders()` order. */
+export function envSeededProviderIds(env: EnvLike = readEnv()): Provider['id'][] {
+  if (!envSeedEnabled(env)) return [];
+  return defaultProviders()
+    .map((p) => p.id)
+    .filter((id) => ENV_KEY_VAR[id] !== '' && envStr(env, ENV_KEY_VAR[id]) !== '');
+}
+
+function seedFromEnv(ps: Provider[], env: EnvLike): Provider[] {
+  if (!envSeedEnabled(env)) return ps;
+  return ps.map((p) => {
+    // Ollama takes an endpoint rather than a key.
+    const endpoint = p.local ? envStr(env, 'VITE_OLLAMA_ENDPOINT') || p.endpoint : p.endpoint;
+    const envKey = ENV_KEY_VAR[p.id] ? envStr(env, ENV_KEY_VAR[p.id]) : '';
+    if ((p.key ?? '').trim() || !envKey) return { ...p, endpoint };
+    return { ...p, endpoint, key: envKey, connected: true, fromEnv: true };
+  });
+}
+
+/**
+ * Routing has to follow the key, or a `.env.local` holding only (say) a Google
+ * key would seed it and still sit in "offline · directives" — every default
+ * role points at Anthropic. Roles already on a seeded provider keep their own
+ * per-role model; the offline/local role is never touched. Stored routing wins
+ * outright (this runs only when nothing is saved).
+ */
+function routeToEnvProvider(rs: RoleRoute[], env: EnvLike): RoleRoute[] {
+  const seeded = envSeededProviderIds(env);
+  if (!seeded.length) return rs;
+  const target = defaultProviders().find((p) => p.id === seeded[0])!;
+  return rs.map((r) => {
+    const current = defaultProviders().find((p) => p.id === r.provider);
+    if (current?.local || seeded.includes(r.provider)) return r;
+    return { ...r, provider: target.id, model: target.model, strength: strengthFor(target.id, target.model) };
+  });
+}
+
+export function loadProviders(env: EnvLike = readEnv()): Provider[] {
+  let merged = defaultProviders();
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return defaultProviders();
-    const saved = JSON.parse(raw) as Provider[];
-    // merge over defaults so new fields appear
-    return defaultProviders().map((d) => ({ ...d, ...saved.find((s) => s.id === d.id) }));
+    if (raw) {
+      const saved = JSON.parse(raw) as Provider[];
+      // merge over defaults so new fields appear
+      merged = merged.map((d) => ({ ...d, ...saved.find((s) => s.id === d.id) }));
+    }
   } catch {
-    return defaultProviders();
+    merged = defaultProviders();
   }
+  return seedFromEnv(merged, env);
 }
 
 export function saveProviders(ps: Provider[]) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(ps));
+    // An env-seeded key is never written back: `.env.local` owns it, and a copy
+    // here would outlive the file and silently override it on the next load.
+    const safe = ps.map((p) => (p.fromEnv ? { ...p, key: '', connected: false, fromEnv: false } : p));
+    localStorage.setItem(LS_KEY, JSON.stringify(safe));
   } catch {
     /* noop */
   }
 }
 
-export function loadRoles(): RoleRoute[] {
+export function loadRoles(env: EnvLike = readEnv()): RoleRoute[] {
   try {
     const raw = localStorage.getItem(LS_ROLES);
-    if (!raw) return defaultRoles();
+    if (!raw) return routeToEnvProvider(defaultRoles(), env);
     const saved = JSON.parse(raw) as RoleRoute[];
     return defaultRoles().map((d) => ({ ...d, ...saved.find((s) => s.id === d.id) }));
   } catch {
-    return defaultRoles();
+    return routeToEnvProvider(defaultRoles(), env);
   }
 }
 

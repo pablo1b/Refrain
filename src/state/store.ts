@@ -1200,7 +1200,11 @@ export const useStore = create<RefrainState>((set, get) => {
 
     // -------- providers --------
     setProviderKey: (pid, key) => {
-      const providers = get().providers.map((p) => (p.id === pid ? { ...p, key, connected: key.trim().length > 0 || !!p.local } : p));
+      // Typing a key takes ownership of it from `.env.local` (fromEnv false →
+      // it persists normally); clearing it hands the slot back to the env file.
+      const providers = get().providers.map((p) =>
+        p.id === pid ? { ...p, key, connected: key.trim().length > 0 || !!p.local, fromEnv: false } : p,
+      );
       saveProviders(providers);
       set({ providers });
     },

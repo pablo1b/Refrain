@@ -233,6 +233,8 @@ export interface Provider {
   model: string;
   connected: boolean;
   local?: boolean;
+  /** Key came from `.env.local`, not the UI — never persisted to localStorage. */
+  fromEnv?: boolean;
 }
 
 export type RoleId = 'directives' | 'generation' | 'theory' | 'offline';
