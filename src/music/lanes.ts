@@ -86,7 +86,10 @@ const GEN_TEMPLATES: Template[] = [
     voice: 'stab',
     shape: 'gap',
     desc: '2 bars',
-    expr: (v) => `note("<Cm7 Fm9>").s("sawtooth").struct("t ~ t ~").room(${fmtNum(0.2 + v * 0.1)})`,
+    // chord symbols only reach pitch through `.voicing()` — `note("<Cm7 …>")`
+    // emits the literal symbol as the note value and renders silence.
+    expr: (v) =>
+      `chord("<Cm7 Fm9>").voicing().s("sawtooth").struct("t ~ t ~").room(${fmtNum(0.2 + v * 0.1)})`,
   },
 ];
 

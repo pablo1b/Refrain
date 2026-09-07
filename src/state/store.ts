@@ -69,7 +69,7 @@ $bass:  note("c2 eb2 g2 c3")
        .s("sawtooth")
        .lpf(sine.range(300,1200).slow(4))
 
-$pad:   note("<Cm7 Abmaj7>")
+$pad:   chord("<Cm7 Ab^7>").voicing()
        .s("sawtooth").room(0.3)
        .slow(2).gain(0.5)`;
 
@@ -1816,9 +1816,12 @@ function observePrompter(
   // modulation — a signal being scaled (`.range(`) or perlin/rand — NOT the
   // signal words themselves, which double as oscillator names (sawtooth/
   // triangle/square) and would mis-flag every synth voice as "moving".
+  // `chord(` counts as pitched too: chord symbols reach pitch via `.voicing()`,
+  // so a harmony voice never says `note(`.
   if (live('static')) {
     const stat = voices.find(
-      (v) => /note\(|<[^>]*>/.test(v.expr) && !/\.range\(|\bperlin\b|\brand\b/.test(v.expr),
+      (v) =>
+        /note\(|chord\(|<[^>]*>/.test(v.expr) && !/\.range\(|\bperlin\b|\brand\b/.test(v.expr),
     );
     if (stat)
       cards.push({
@@ -1834,7 +1837,7 @@ function observePrompter(
   }
   // clash: two or more pitched voices sharing register → offer to voice-lead
   if (live('clash')) {
-    const pitched = voices.filter((v) => /note\(|\bn\(/.test(v.expr));
+    const pitched = voices.filter((v) => /note\(|chord\(|\bn\(/.test(v.expr));
     if (pitched.length >= 2) {
       const target = pitched[pitched.length - 1];
       cards.push({
@@ -1870,8 +1873,11 @@ function observePrompter(
 // ---- tiny offline "explain this line as music" ----
 function describeExpr(expr: string): string {
   const bits: string[] = [];
-  if (/\bnote\(|\bn\(/.test(expr)) {
-    const m = expr.match(/note\("([^"]+)"\)/);
+  // `chord(` counts as pitched too — a harmony voice reaches pitch through
+  // `.voicing()` and never says `note(`, so keying only off note()/n() left the
+  // seeded pad described as "a Strudel pattern" with its chords unnamed.
+  if (/\bnote\(|\bn\(|\bchord\(/.test(expr)) {
+    const m = expr.match(/note\("([^"]+)"\)/) ?? expr.match(/chord\("([^"]+)"\)/);
     if (m) bits.push(`the pitches \`${m[1]}\``);
   }
   const snd = expr.match(/\.s\("([^"]+)"\)|^s\("([^"]+)"\)|\bs\("([^"]+)"\)/);

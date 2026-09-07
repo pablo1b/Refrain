@@ -1015,12 +1015,44 @@ describe('new project starter score (A-9)', () => {
     expect(starterScore().split('\n')[0]).toBe('// untitled — set 01');
   });
 
-  it('leaves DEFAULT_SCORE byte-identical — the seeded song really is nightjar', () => {
+  it('keeps the DEFAULT_SCORE name + byte offsets other tests key off', () => {
     // guards the A-9 refactor against moving bytes the v0.2.1 merge tests and
-    // the browser-tier editor test depend on
+    // the browser-tier editor test depend on. This pin is about the NAME and the
+    // byte offsets those tests key off — not the musical content of a voice, so
+    // fixing the silent $pad chord below is a legitimate fixture update.
     expect(DEFAULT_SCORE.split('\n')[0]).toBe('// nightjar — set 02');
     expect(DEFAULT_SCORE).toContain('$drums: s("bd*2, ~ sd").bank("RolandTR909")');
     expect(DEFAULT_SCORE.endsWith('.slow(2).gain(0.5)')).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Chord symbols reach pitch ONLY through `.voicing()`. `note("<Cm7 …>")` emits
+// the literal string "Cm7" as the note value, which renders SILENCE with no
+// error — measured: the shipped $pad produced peak 0.0000 for 12s while its
+// meter ran a full envelope. Every score the app AUTHORS must therefore route
+// chord symbols through `chord(…).voicing()`.
+// ===========================================================================
+describe('app-authored scores render their chords', () => {
+  const authored = [
+    ['DEFAULT_SCORE', DEFAULT_SCORE],
+    ['starterScore()', starterScore('a13probe')],
+  ] as const;
+
+  it.each(authored)('%s never puts a chord symbol inside note()', (_label, score) => {
+    expect(score).not.toMatch(/note\(\s*"<?[A-G][#b]?(m|maj|min|M|\^|dim|aug|sus|add|alt|[0-9])/);
+  });
+
+  it.each(authored)('%s voices its harmony through chord().voicing()', (_label, score) => {
+    expect(score).toContain('chord("<Cm7 Ab^7>").voicing()');
+  });
+
+  // `Abmaj7` is NOT a symbol the voicing dictionary knows — it queries to zero
+  // events, silent exactly like the bug it would replace. `Ab^7` is the iReal
+  // spelling the skill documents and it renders (Eb3 Ab3 C4 G4 C5).
+  it('uses a chord spelling the voicing dictionary actually knows', () => {
+    expect(DEFAULT_SCORE).not.toContain('Abmaj7');
+    expect(DEFAULT_SCORE).toContain('Ab^7');
   });
 });
 
@@ -1127,5 +1159,64 @@ describe('togglePlay re-entry guard (D9)', () => {
     await state().togglePlay(); // play again, from the top
     expect(state().playing).toBe(true);
     expect(engine.now()).toBe(0);
+  });
+});
+
+// The prompter's pitched-voice detection keys off `note(`/`n(`/`chord(`. When
+// the seeded pad moved from `note("<Cm7 Abmaj7>")` to `chord(...).voicing()` —
+// because a chord symbol in `note()` renders SILENCE — these regexes had to
+// learn `chord(`, or a harmony voice would have silently stopped counting as
+// pitched. Nothing covered them, so reverting either edit stayed green.
+describe('prompter pitched-voice detection', () => {
+  it('counts a chord().voicing() voice as pitched for the clash card', () => {
+    // two pitched voices sharing register is what `clash` looks for; the pad
+    // reaches pitch only through chord(), so it must count.
+    state().setScore(
+      '$bass: note("c2 eb2")\n$pad: chord("<Cm7 Ab^7>").voicing().s("sawtooth")',
+    );
+    state().refreshPrompter();
+    const clash = state().prompterCards.find((c) => c.kind === 'clash');
+    expect(clash).toBeDefined();
+  });
+
+  it('does not fire clash when only one voice is pitched', () => {
+    state().setScore('$drums: s("bd*2")\n$pad: chord("<Cm7 Ab^7>").voicing()');
+    state().refreshPrompter();
+    expect(state().prompterCards.find((c) => c.kind === 'clash')).toBeUndefined();
+  });
+
+  it('counts a chord().voicing() voice as pitched for the static card', () => {
+    // A SINGLE chord — no `<...>` alternation — so only `chord(` can match it.
+    // With angle brackets the regex's `<[^>]*>` branch matches anyway and the
+    // `chord(` edit would look load-bearing when it is not.
+    state().setScore('$pad: chord("Cm7").voicing().s("sawtooth").room(0.3)');
+    state().refreshPrompter();
+    const stat = state().prompterCards.find((c) => c.kind === 'static');
+    expect(stat).toBeDefined();
+    expect(stat!.voiceId).toBe('pad');
+  });
+
+  it('leaves a modulated chord voice alone — it is not static', () => {
+    state().setScore(
+      '$pad: chord("Cm7").voicing().s("sawtooth").lpf(sine.range(300,1200))',
+    );
+    state().refreshPrompter();
+    expect(state().prompterCards.find((c) => c.kind === 'static')).toBeUndefined();
+  });
+});
+
+// "explain this line as music" keyed off note()/n() only, so a harmony voice —
+// which reaches pitch through chord(...).voicing() and never says note() — was
+// described as "a Strudel pattern" with its chords unnamed. Two sibling regexes
+// in the same file learned `chord(`; this one had been missed.
+describe('offline explain names chord pitches', () => {
+  it('names the chords of a chord().voicing() voice', async () => {
+    state().setScore('$pad: chord("<Cm7 Ab^7>").voicing().s("sawtooth")');
+    state().selectVoice('pad');
+    await state().sendMaestro('what is the pad doing?');
+    const last = state().messages.at(-1)!;
+    expect(last.shape).toBe('answer');
+    expect(last.text).toContain('<Cm7 Ab^7>'); // the chords, named
+    expect(last.text).not.toContain('a Strudel pattern');
   });
 });

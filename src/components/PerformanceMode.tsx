@@ -37,7 +37,7 @@ export function PerformanceMode() {
   const hush = useStore((s) => s.hush);
   const midiOn = useStore((s) => s.midiOn);
   const anySolo = voices.some((v) => v.solo);
-  const { levels } = useMeters();
+  const { levels, measured } = useMeters();
 
   // Esc leaves the live view. THE TRANSPORT IS NOT HANDLED HERE: App.tsx owns the
   // single transport binding (§12.3). A second owner double-fired togglePlay(),
@@ -85,7 +85,7 @@ export function PerformanceMode() {
                 <div
                   key={`meter:${i}:${v.id}`}
                   role="meter"
-                  aria-label={`${v.sigil} level`}
+                  aria-label={`${v.sigil} ${measured[v.id] ? 'level' : 'activity'}`}
                   aria-valuenow={Math.round(level)}
                   aria-valuemin={0}
                   aria-valuemax={100}

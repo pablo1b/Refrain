@@ -8,6 +8,7 @@ vi.mock('../audio/strudelEngine', async () => {
 
 import { PatchDesigner } from './PatchDesigner';
 import { engine } from '../audio/strudelEngine';
+import { useStore } from '../state/store';
 import { resetStore } from '../../tests/helpers/store';
 
 beforeEach(() => {
@@ -30,5 +31,25 @@ describe('PatchDesigner knob drag survives an untracked pointer (B-10)', () => {
 
     if (original) proto.setPointerCapture = original;
     else delete proto.setPointerCapture;
+  });
+});
+
+// The designer's whole point is staging a voice you can HEAR. It emitted
+// `note("<Cm7 Abmaj7>")`, where the note value is the literal string "Cm7" —
+// silent, with no error. Chord symbols reach pitch only via `.voicing()`.
+describe('the staged patch voice can actually sound', () => {
+  it('stages $warmpad through chord().voicing(), not a chord symbol in note()', () => {
+    const { getByText } = render(<PatchDesigner />);
+    fireEvent.click(getByText('stage as $warmpad'));
+
+    const staged = useStore.getState().stagedEdit;
+    expect(staged).toBeTruthy();
+    expect(staged!.newCode).toContain('chord("<Cm7 Ab^7>").voicing()');
+    expect(staged!.newCode).not.toMatch(/note\(\s*"<?[A-G][#b]?(m|maj|min|M|\^|dim|aug|sus|add|alt|[0-9])/);
+  });
+
+  it('shows the same chain it stages, so the diagram is not lying', () => {
+    const { container } = render(<PatchDesigner />);
+    expect(container.textContent).toContain('chord(x).voicing()');
   });
 });

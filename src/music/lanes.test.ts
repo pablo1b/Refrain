@@ -144,7 +144,9 @@ describe('generated numbers carry no float noise (A-11)', () => {
   it('emits .room(0.3), not .room(0.30000000000000004)', () => {
     // seed 7 → lane A takes the "chord stab" template at variant 1
     const lanes = buildLanes(GEN_PROMPT, [], 7);
-    expect(lanes[0].code).toBe('$stab: note("<Cm7 Fm9>").s("sawtooth").struct("t ~ t ~").room(0.3)');
+    expect(lanes[0].code).toBe(
+      '$stab: chord("<Cm7 Fm9>").voicing().s("sawtooth").struct("t ~ t ~").room(0.3)',
+    );
   });
 
   it('emits .distort("1.8:0.4"), not 1.7999999999999998', () => {
@@ -160,6 +162,29 @@ describe('generated numbers carry no float noise (A-11)', () => {
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A lane exists to be AUDITIONED — you solo it against the mix. The "chord
+// stab" archetype emitted `note("<Cm7 Fm9>")`, which renders silence (the note
+// value is the literal string "Cm7"), so a quarter of the pool could never be
+// heard. Chord symbols must go through `.voicing()`.
+// ---------------------------------------------------------------------------
+describe('every generated lane can actually sound', () => {
+  it('never puts a chord symbol inside note(), for any seed or prompt', () => {
+    for (const prompt of [GEN_PROMPT, DROP_PROMPT, '4 ways into the drop']) {
+      for (let seed = 0; seed < 24; seed++) {
+        for (const l of buildLanes(prompt, [], seed)) {
+          expect(l.code).not.toMatch(/note\(\s*"<?[A-G][#b]?(m|maj|min|M|\^|dim|aug|sus|add|alt|[0-9])/);
+        }
+      }
+    }
+  });
+
+  it('voices the chord-stab archetype through chord().voicing()', () => {
+    const stab = buildLanes(GEN_PROMPT, [], 7)[0].code;
+    expect(stab).toContain('chord("<Cm7 Fm9>").voicing()');
   });
 });
 

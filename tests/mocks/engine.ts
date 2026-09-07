@@ -35,6 +35,9 @@ export interface FakeEngine {
   queryEvents: ReturnType<typeof vi.fn>;
   getAnalyser: ReturnType<typeof vi.fn>;
   sampleOutput: ReturnType<typeof vi.fn>;
+  /** Real per-voice audio tap. null at tiers 1-2, so the meters take their
+   *  documented onset-envelope fallback instead of reading Web Audio. */
+  voiceLevel: ReturnType<typeof vi.fn>;
   /**
    * Models repl.scheduler.now(): cycles since the transport last started. The
    * real engine's stop() rewinds the scheduler to 0, so a double-fired
@@ -67,6 +70,7 @@ export function createFakeEngine(): FakeEngine {
     queryEvents: vi.fn(),
     getAnalyser: vi.fn(),
     sampleOutput: vi.fn(),
+    voiceLevel: vi.fn(),
     __cycle: 0,
     __advance: () => {},
     __reset: () => {},
@@ -100,6 +104,7 @@ export function createFakeEngine(): FakeEngine {
     e.queryEvents.mockResolvedValue([]);
     e.getAnalyser.mockReturnValue(null);
     e.sampleOutput.mockReturnValue(null);
+    e.voiceLevel.mockReturnValue(null);
     e.__advance = (n: number) => {
       e.__cycle += n;
     };
@@ -124,6 +129,7 @@ export function createFakeEngine(): FakeEngine {
     e.queryEvents.mockReset();
     e.getAnalyser.mockReset();
     e.sampleOutput.mockReset();
+    e.voiceLevel.mockReset();
     applyDefaults();
   };
 

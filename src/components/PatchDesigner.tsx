@@ -58,10 +58,10 @@ export function PatchDesigner() {
   const hz = Math.round(200 + cutoff * 4800);
   const q = +(2 + res * 14).toFixed(1);
   const rel = +(0.2 + release * 4).toFixed(2);
-  const chain = `note(x).s("sawtooth")\n .unison(2).detune(0.12)\n .lpf(${hz}).lpq(${q})\n .release(${rel}).room(0.3)`;
+  const chain = `chord(x).voicing().s("sawtooth")\n .unison(2).detune(0.12)\n .lpf(${hz}).lpq(${q})\n .release(${rel}).room(0.3)`;
 
   const addVoice = () => {
-    const voice = `$warmpad: note("<Cm7 Abmaj7>").s("sawtooth").unison(2).detune(0.12)\n         .lpf(${hz}).lpq(${q}).release(${rel}).room(0.3).slow(2).gain(0.5)`;
+    const voice = `$warmpad: chord("<Cm7 Ab^7>").voicing().s("sawtooth").unison(2).detune(0.12)\n         .lpf(${hz}).lpq(${q}).release(${rel}).room(0.3).slow(2).gain(0.5)`;
     stageEdit(`Patch **~warm·pad** → new voice ${'`$warmpad`'}: lpf ${hz}, lpq ${q}, release ${rel}.`, `${score}\n\n${voice}`, { directive: 'patch' });
     close(null);
   };
