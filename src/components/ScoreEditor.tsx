@@ -235,16 +235,28 @@ class OffMarker extends GutterMarker {
     span.style.display = 'inline-flex';
     span.style.alignItems = 'center';
     span.style.justifyContent = 'center';
-    span.style.width = `${MINI_W}px`;
+    // No explicit width on the PADDED element: `index.css` sets `* { box-sizing:
+    // border-box }`, so `width: MINI_W` here would swallow the padding and make
+    // this marker 8px narrower than a roll one — with every voice off the gutter
+    // shrank 100→92 and the code shifted left. Sizing to a MINI_W-wide child
+    // instead mirrors how a roll marker sizes to its MINI_W svg, under either
+    // box-sizing (B-1).
     span.style.padding = '0 4px';
     span.style.cursor = 'pointer';
+    const rail = document.createElement('span');
+    rail.style.display = 'inline-flex';
+    rail.style.alignItems = 'center';
+    rail.style.justifyContent = 'center';
+    rail.style.width = `${MINI_W}px`;
     const dot = document.createElement('span');
     dot.style.width = '4px';
     dot.style.height = '4px';
+    dot.style.flex = 'none';
     dot.style.borderRadius = '50%';
     dot.style.background = 'var(--gutter)';
     dot.style.opacity = '0.55';
-    span.appendChild(dot);
+    rail.appendChild(dot);
+    span.appendChild(rail);
     span.onmousedown = (e) => e.preventDefault();
     span.onclick = (e) => {
       e.preventDefault();

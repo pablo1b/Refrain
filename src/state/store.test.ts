@@ -567,6 +567,45 @@ describe('agent · /break (spec §03)', () => {
 });
 
 // Author-your-own directives (spec §10) — bind a verb, run it like a built-in.
+// ---------------------------------------------------------------------------
+// D19/D20 — a user alias under 3 chars cannot match prose (it would capture
+// nearly every free-text turn). That must be REPORTED, not silent: silently
+// inert is the same class of defect as A-10's silent mis-targeting. And the
+// condition is a property of STORED data, so it is reported wherever it exists
+// (hydrate), not only where it was introduced (add).
+// ---------------------------------------------------------------------------
+describe('short custom aliases are diagnosed, not silently inert (D19/D20)', () => {
+  const warnings = () => state().logs.filter((l) => l.type === 'warning').map((l) => l.text);
+
+  it('warns when a bound verb has an alias too short to match prose', () => {
+    state().addCustomDirective({ label: 'go', aliases: ['on'], chain: '.gain(0)', blurb: '' });
+    const w = warnings().filter((t) => t.includes('too short'));
+    expect(w).toHaveLength(1);
+    expect(w[0]).toContain('“go”');
+    expect(w[0]).toContain('“on”');
+    // and it says what still works, rather than only what doesn't
+    expect(w[0]).toContain('/go');
+  });
+
+  it('does not warn for a verb whose aliases are all long enough', () => {
+    state().addCustomDirective({ label: 'Shimmer', aliases: ['glisten'], chain: '.room(0.5)', blurb: '' });
+    expect(warnings().filter((t) => t.includes('too short'))).toHaveLength(0);
+  });
+
+  it('warns on hydrate for a verb stored BEFORE the floor existed', () => {
+    // the transition-only version of this diagnostic missed exactly this case
+    localStorage.setItem(
+      LS_CUSTOM_DIRECTIVES,
+      JSON.stringify([{ id: 'u_go', label: 'go', aliases: ['on'], chain: '.gain(0)', blurb: '' }]),
+    );
+    localStorage.setItem(LS_CUSTOM_MIGRATED, '1');
+    state().hydrateFromStorage();
+    expect(warnings().filter((t) => t.includes('too short'))).not.toHaveLength(0);
+    // the verb is kept and still invocable by slash — the floor is a prose guard
+    expect(state().customDirectives.map((d) => d.id)).toContain('u_go');
+  });
+});
+
 describe('custom directives (spec §10)', () => {
   it('binds a directive and runs it, appending its chain to the target voice', () => {
     state().addCustomDirective({ label: 'Shimmer', aliases: ['shimmer'], chain: '.room(0.5).delay(0.3)', blurb: 'adds air.' });

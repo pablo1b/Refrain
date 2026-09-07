@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, onTestFinished } from 'vitest';
 import { render, waitFor, act } from '@testing-library/react';
 import { ScoreEditor } from './ScoreEditor';
 import { cssVar } from '../theme/tokens';
@@ -104,6 +104,46 @@ describe('mini-roll gutter (spec §12.5)', () => {
     const offWidth = container.querySelector('.cm-miniroll')!.getBoundingClientRect().width;
 
     expect(Math.abs(offWidth - rollWidth)).toBeLessThanOrEqual(1);
+  });
+
+  // One voice off is not the failing case: the gutter is as wide as its WIDEST
+  // marker, so a single narrow `off` hides behind its roll siblings. Only with
+  // every voice off does an undersized affordance shrink the gutter and shift the
+  // code left — which is what an operator pass measured (100px → 92px).
+  it('keeps the gutter width stable with EVERY voice off', async () => {
+    // `index.css` applies `* { box-sizing: border-box }` app-wide but is not
+    // loaded here, and without it an explicit width silently behaves as
+    // content-box — so this test only reproduces the real geometry with the
+    // reset in place. Without this line it passes against the broken code.
+    const reset = document.createElement('style');
+    reset.textContent = '* { box-sizing: border-box; }';
+    document.head.appendChild(reset);
+    onTestFinished(() => reset.remove());
+
+    const { container } = render(<ScoreEditor />);
+    await act(async () => {
+      useStore.getState().toggleLens('miniroll');
+    });
+    await waitFor(() => expect(marker(container, 'drums')).toBeTruthy());
+    const gutter = () => container.querySelector('.cm-miniroll')!.getBoundingClientRect().width;
+    const contentLeft = () => container.querySelector('.cm-content')!.getBoundingClientRect().left;
+    const rollWidth = gutter();
+    const rollLeft = contentLeft();
+
+    const ids = useStore.getState().voices.map((v) => v.id);
+    expect(ids.length).toBeGreaterThan(1);
+    await act(async () => {
+      // roll → spark → off, for all of them
+      for (const vid of ids) {
+        useStore.getState().cycleMiniRoll(vid);
+        useStore.getState().cycleMiniRoll(vid);
+      }
+    });
+    await waitFor(() => expect(container.querySelectorAll('.cm-minirollOff')).toHaveLength(ids.length));
+    expect(container.querySelectorAll('.cm-minirollMarker')).toHaveLength(0);
+
+    expect(Math.abs(gutter() - rollWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(contentLeft() - rollLeft)).toBeLessThanOrEqual(1);
   });
 
   it('renders no mini-roll gutter markers when the lens is off', async () => {

@@ -328,11 +328,19 @@ export function interpret(text: string, voiceIds: string[], custom: CustomDirect
       if (t.includes(a)) matches.push({ id: d.id, len: a.length });
     }
   }
-  // the user's own verbs race in the same pool, so longest-alias-first still
-  // holds across both vocabularies (A-5)
-  for (const c of custom) {
-    for (const a of [c.label.toLowerCase(), ...c.aliases.map((x) => x.toLowerCase())]) {
-      if (a && t.includes(a)) matches.push({ id: c.id, len: a.length });
+  // ONE precedence rule, on both the slash path and here: built-ins win, and the
+  // user's pack only races among itself. Length-sorting a single merged pool used
+  // to let a longer forged alias ("make it darker") outrank a built-in ("darker"),
+  // which quietly falsified the "never shadow the documented vocabulary" guarantee
+  // (A-5/D18). Matching is deliberately ASYMMETRIC too: built-in aliases are
+  // curated so a substring test is safe, while user aliases are arbitrary and get
+  // word-boundary + a 3-char floor — otherwise an alias "on" matches "phone", and
+  // a one-word verb silently captures every free-text turn that reaches here.
+  if (!matches.length) {
+    for (const c of custom) {
+      for (const a of customAliases(c)) {
+        if (aliasHit(t, a)) matches.push({ id: c.id, len: a.length });
+      }
     }
   }
   if (matches.length) {
@@ -341,6 +349,29 @@ export function interpret(text: string, voiceIds: string[], custom: CustomDirect
   }
 
   return { kind: 'unknown', text: raw };
+}
+
+/** Shortest user alias that may match free-text prose (D19). Below this a verb
+ *  would capture nearly every turn that reaches the alias branch. Explicit
+ *  `/slash` invocation is unaffected — that is a deliberate, exact call. */
+export const MIN_CUSTOM_ALIAS = 3;
+
+/** The prose-matchable aliases of a forged verb: its label plus its aliases,
+ *  lowercased, with anything under MIN_CUSTOM_ALIAS dropped. */
+export function customAliases(c: CustomDirective): string[] {
+  return [c.label.toLowerCase(), ...c.aliases.map((x) => x.toLowerCase())].filter((a) => a.length >= MIN_CUSTOM_ALIAS);
+}
+
+/** Aliases of a forged verb that are too short to match prose (D19/D20) — used
+ *  to warn the user rather than let the verb go silently inert. */
+export function shortCustomAliases(c: CustomDirective): string[] {
+  return [c.label, ...c.aliases].filter((a) => a.trim().length > 0 && a.trim().length < MIN_CUSTOM_ALIAS);
+}
+
+/** Word-boundary containment, so a user alias "on" cannot match "phone". */
+function aliasHit(text: string, alias: string): boolean {
+  const esc = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i').test(text);
 }
 
 /** A forged verb by id, label or alias. Arrays only — no prototype surface. */

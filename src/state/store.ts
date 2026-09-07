@@ -28,7 +28,7 @@ import type {
 import { engine, type EngineStatus, type EngineEvent } from '../audio/strudelEngine';
 import { midi } from '../audio/midiSync';
 import { parseScore } from '../music/parseScore';
-import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, DIRECTIVE_BY_ID } from '../music/directives';
+import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, shortCustomAliases, MIN_CUSTOM_ALIAS, DIRECTIVE_BY_ID } from '../music/directives';
 import { computeHunks, applyEnabled } from '../music/diff';
 import { mergeScores, applyResolutions } from '../music/merge';
 import { colorForVoice, cssVar } from '../theme/tokens';
@@ -325,6 +325,20 @@ interface RefrainState {
 }
 
 // -------- helpers (module scope) --------
+
+/** Tell the user when a forged alias is too short to ever match prose (D19/D20).
+ *  It still works as an explicit `/verb`; it just cannot be discovered by phrasing. */
+function warnShortAliases(get: () => RefrainState, verbs: CustomDirective[]): void {
+  for (const v of verbs) {
+    const short = shortCustomAliases(v);
+    if (short.length) {
+      get().log(
+        `directive “${v.label}”: ${short.map((a) => `“${a}”`).join(', ')} ${short.length > 1 ? 'are' : 'is'} under ${MIN_CUSTOM_ALIAS} characters — too short to match plain language; use /${v.label.toLowerCase()} directly`,
+        'warning',
+      );
+    }
+  }
+}
 
 function buildVoices(score: string, vstate: Record<string, VState>): Voice[] {
   const { voices } = parseScore(score);
@@ -1563,6 +1577,7 @@ export const useStore = create<RefrainState>((set, get) => {
       saveCustomDirectives(next);
       set({ customDirectives: next });
       get().log(`directive “${dir.label}” bound`, 'success');
+      warnShortAliases(get, [dir]);
     },
     removeCustomDirective: (cid) => {
       const next = get().customDirectives.filter((d) => d.id !== cid);
@@ -1573,7 +1588,11 @@ export const useStore = create<RefrainState>((set, get) => {
     // -------- projects (spec §08) --------
     hydrateFromStorage: () => {
       // the ONE place the legacy per-project verb field is drained (A-4)
-      set({ customDirectives: migrateCustomDirectives() });
+      const verbs = migrateCustomDirectives();
+      set({ customDirectives: verbs });
+      // a verb stored before the 3-char floor existed would otherwise go quiet
+      // with no diagnostic, so report the condition here too, not just on add (D20)
+      warnShortAliases(get, verbs);
       const activeId = activeProjectId();
       const blob = activeId ? loadProject(activeId) : null;
       if (blob) {

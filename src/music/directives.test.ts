@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, DIRECTIVES, DIRECTIVE_BY_ID } from './directives';
+import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, shortCustomAliases, DIRECTIVES, DIRECTIVE_BY_ID } from './directives';
 import type { CustomDirective } from '../types';
 import { parseScore } from './parseScore';
 
@@ -344,6 +344,88 @@ describe('interpret — custom directives (A-5)', () => {
 
   it('is unchanged when no custom pack is passed (back-compat)', () => {
     expect(interpret('/shimmer $pad', ['pad'])).toMatchObject({ kind: 'unknown-command', token: 'shimmer' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D18/D19 — "a forged verb never shadows the documented vocabulary" has to hold
+// on BOTH resolution paths. The slash path always resolved built-ins first, but
+// prose length-sorted one merged pool, so a longer forged alias won. That
+// falsified a guarantee already written into the commit message.
+// ---------------------------------------------------------------------------
+const shimmerVerb: CustomDirective = {
+  id: 'u_shimmer',
+  label: 'Shimmer',
+  aliases: ['glisten'],
+  chain: '.room(0.5).lpf(1200)',
+  blurb: 'air',
+};
+
+describe('interpret — built-ins win on the prose path too (D18)', () => {
+  /** A forged verb whose alias is LONGER than the built-in it collides with. */
+  const impostor: CustomDirective = {
+    id: 'u_mine',
+    label: 'mine',
+    aliases: ['make it darker'],
+    chain: '.gain(0)',
+    blurb: '',
+  };
+
+  it('a longer forged alias still loses to the built-in it collides with', () => {
+    // "make it darker" (14) vs built-in `darker` (6) — length-sorting a single
+    // merged pool used to hand this to the custom verb.
+    expect(interpret('make it darker', ['bass'], [impostor])).toMatchObject({
+      kind: 'directive',
+      id: 'darker',
+    });
+  });
+
+  it('a forged verb still resolves from prose when no built-in matches', () => {
+    expect(interpret('add some glisten to the pad', ['pad'], [shimmerVerb])).toMatchObject({
+      kind: 'directive',
+      id: 'u_shimmer',
+    });
+  });
+
+  it('longest-alias-first still holds WITHIN the built-in vocabulary', () => {
+    // the pre-existing specificity rule must survive the precedence change
+    expect(interpret('take it down an octave', ['bass']).kind).toBe('directive');
+    expect(interpret('down an octave', ['bass'])).toMatchObject({ kind: 'directive', id: 'octdown' });
+  });
+
+  it('longest-alias-first still holds WITHIN the user pack', () => {
+    const short: CustomDirective = { id: 'u_air', label: 'air', aliases: [], chain: '.room(0.2)', blurb: '' };
+    const long: CustomDirective = { id: 'u_bigair', label: 'big air please', aliases: [], chain: '.room(0.9)', blurb: '' };
+    expect(interpret('give it big air please', ['pad'], [short, long])).toMatchObject({ id: 'u_bigair' });
+  });
+});
+
+describe('interpret — user aliases need a word boundary and 3 chars (D19)', () => {
+  it('a user alias does not match inside a longer word', () => {
+    const onVerb: CustomDirective = { id: 'u_on', label: 'onx', aliases: ['onx'], chain: '.gain(1)', blurb: '' };
+    // "onx" must not fire on "saxonxylophone"
+    expect(interpret('a saxonxylophone sound', ['pad'], [onVerb]).kind).toBe('unknown');
+    expect(interpret('turn onx the pad', ['pad'], [onVerb])).toMatchObject({ kind: 'directive', id: 'u_on' });
+  });
+
+  it('an alias under 3 characters is ignored in prose', () => {
+    const tiny: CustomDirective = { id: 'u_t', label: 'go', aliases: ['on'], chain: '.gain(0)', blurb: '' };
+    // "on" would otherwise capture nearly every free-text turn reaching the
+    // alias branch — including via substring, as in "phone"
+    expect(interpret('put it on the phone', ['pad'], [tiny]).kind).toBe('unknown');
+    expect(interpret('go now', ['pad'], [tiny]).kind).toBe('unknown');
+  });
+
+  it('a short alias is still invocable explicitly as a slash verb', () => {
+    // the floor is a prose-discovery guard, not a ban on the verb
+    const tiny: CustomDirective = { id: 'u_t', label: 'go', aliases: ['on'], chain: '.gain(0)', blurb: '' };
+    expect(interpret('/go $pad', ['pad'], [tiny])).toMatchObject({ kind: 'directive', id: 'u_t' });
+    expect(interpret('/on $pad', ['pad'], [tiny])).toMatchObject({ kind: 'directive', id: 'u_t' });
+  });
+
+  it('shortCustomAliases reports exactly what will not match prose', () => {
+    expect(shortCustomAliases({ id: 'u_t', label: 'go', aliases: ['on', 'glisten'], chain: '', blurb: '' })).toEqual(['go', 'on']);
+    expect(shortCustomAliases({ id: 'u_s', label: 'Shimmer', aliases: [], chain: '', blurb: '' })).toEqual([]);
   });
 });
 
