@@ -28,7 +28,7 @@ import type {
 import { engine, type EngineStatus, type EngineEvent } from '../audio/strudelEngine';
 import { midi } from '../audio/midiSync';
 import { parseScore } from '../music/parseScore';
-import { applyDirective, interpret, DIRECTIVE_BY_ID } from '../music/directives';
+import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, DIRECTIVE_BY_ID } from '../music/directives';
 import { computeHunks, applyEnabled } from '../music/diff';
 import { mergeScores, applyResolutions } from '../music/merge';
 import { colorForVoice, cssVar } from '../theme/tokens';
@@ -44,7 +44,7 @@ import {
   resolveEffort,
   MAESTRO_SYSTEM,
 } from '../llm/providers';
-import { buildLanes } from '../music/lanes';
+import { buildLanes, laneBody, refineLaneDraft } from '../music/lanes';
 import {
   type ProjectBlob,
   listProjects,
@@ -52,11 +52,15 @@ import {
   saveProject,
   activeProjectId,
   setActiveProjectId,
+  loadCustomDirectives,
+  saveCustomDirectives,
+  migrateCustomDirectives,
 } from './projects';
 import type { ProjectMeta } from '../types';
 
-export const DEFAULT_SCORE = `// nightjar — set 02
-setcps(0.5)
+/** Everything after the header comment — shared by the seeded song and by every
+ *  new project, so the two can never drift apart. */
+const STARTER_BODY = `setcps(0.5)
 
 $drums: s("bd*2, ~ sd").bank("RolandTR909")
 $hats:  s("hh*8").gain("0.4 0.7")
@@ -68,6 +72,19 @@ $bass:  note("c2 eb2 g2 c3")
 $pad:   note("<Cm7 Abmaj7>")
        .s("sawtooth").room(0.3)
        .slow(2).gain(0.5)`;
+
+/**
+ * The starter score for a NEW project — headed with its OWN name. Every new
+ * project used to inherit the literal `// nightjar — set 02`, so a project
+ * called "a12scratch" opened claiming to be someone else's song (A-9).
+ */
+export function starterScore(name = 'untitled'): string {
+  return `// ${name.trim() || 'untitled'} — set 01\n${STARTER_BODY}`;
+}
+
+/** The seeded default song. Byte-identical to the pre-A-9 constant: this one
+ *  really IS called nightjar, so its header is correct. */
+export const DEFAULT_SCORE = `// nightjar — set 02\n${STARTER_BODY}`;
 
 let uid = 0;
 const id = (p = 'x') => `${p}${Date.now().toString(36)}${(uid++).toString(36)}`;
@@ -84,24 +101,6 @@ function nowCycle(): number {
     return engine.started ? Math.floor(engine.now()) : 0;
   } catch {
     return 0;
-  }
-}
-
-// Author-your-own directives persist locally, like providers/roles (spec §10).
-const LS_CUSTOM = 'refrain.customDirectives';
-function loadCustomDirectives(): CustomDirective[] {
-  try {
-    const raw = localStorage.getItem(LS_CUSTOM);
-    return raw ? (JSON.parse(raw) as CustomDirective[]) : [];
-  } catch {
-    return [];
-  }
-}
-function saveCustomDirectives(ds: CustomDirective[]) {
-  try {
-    localStorage.setItem(LS_CUSTOM, JSON.stringify(ds));
-  } catch {
-    /* noop */
   }
 }
 
@@ -373,6 +372,8 @@ function effectiveScore(score: string, vstate: Record<string, VState>): string {
 
 let tickToken = 0;
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
+/** Guards togglePlay against re-entry while `play()` awaits the engine (D9). */
+let toggleInFlight = false;
 
 export const useStore = create<RefrainState>((set, get) => {
   // recompute per-voice events (begin+dur+gain) for the current voices; the
@@ -508,35 +509,45 @@ export const useStore = create<RefrainState>((set, get) => {
   /** Snapshot the whole project to local storage — the history tree IS the save
    *  file, so this runs on every commit (autosave, never a prompt · spec §08). */
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
-  function persistProject() {
+  /** `immediate` skips the debounce for a discrete, user-visible act of saving
+   *  (capturing or deleting a scene) — those used to reach disk only when some
+   *  later commit happened to flush, so a reload could lose them (A-2). */
+  function persistProject(opts?: { immediate?: boolean }) {
     if (persistTimer) clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => {
-      const s = get();
-      // Bound the serialized history so autosave can't blow the ~5MB localStorage
-      // quota over a long session (each commit carries a full score snapshot).
-      // The in-memory tree stays complete; only the persisted tail is capped.
-      const MAX_PERSISTED = 400;
-      const history = s.history.length > MAX_PERSISTED ? s.history.slice(-MAX_PERSISTED) : s.history;
-      // don't persist a headId that fell outside the retained window (a rewind to
-      // an old node) — coerce it into range so reload can't orphan HEAD.
-      const headId = history.some((c) => c.id === s.headId) ? s.headId : history.length ? history[history.length - 1].id : null;
-      const blob: ProjectBlob = {
-        id: s.projectId,
-        name: s.projectName,
-        score: s.score,
-        committed: s.committed,
-        history,
-        headId,
-        scenes: s.scenes,
-        seed: s.seed,
-        voiceState: s.voiceState,
-        customDirectives: s.customDirectives,
-        effort: s.effort,
-        updated: Date.now(),
-      };
-      saveProject(blob);
-      set({ projects: listProjects() });
-    }, 400);
+    if (opts?.immediate) {
+      persistTimer = null;
+      writeProject();
+      return;
+    }
+    persistTimer = setTimeout(writeProject, 400);
+  }
+
+  function writeProject() {
+    const s = get();
+    // Bound the serialized history so autosave can't blow the ~5MB localStorage
+    // quota over a long session (each commit carries a full score snapshot).
+    // The in-memory tree stays complete; only the persisted tail is capped.
+    const MAX_PERSISTED = 400;
+    const history = s.history.length > MAX_PERSISTED ? s.history.slice(-MAX_PERSISTED) : s.history;
+    // don't persist a headId that fell outside the retained window (a rewind to
+    // an old node) — coerce it into range so reload can't orphan HEAD.
+    const headId = history.some((c) => c.id === s.headId) ? s.headId : history.length ? history[history.length - 1].id : null;
+    const blob: ProjectBlob = {
+      id: s.projectId,
+      name: s.projectName,
+      score: s.score,
+      committed: s.committed,
+      history,
+      headId,
+      scenes: s.scenes,
+      seed: s.seed,
+      voiceState: s.voiceState,
+      // NOTE: no `customDirectives` — verbs are device-level (A-4).
+      effort: s.effort,
+      updated: Date.now(),
+    };
+    saveProject(blob);
+    set({ projects: listProjects() });
   }
 
   /** Hydrate the live store from a persisted project blob (spec §08). */
@@ -554,7 +565,9 @@ export const useStore = create<RefrainState>((set, get) => {
       history: blob.history?.length ? blob.history : [rootCommit],
       headId: blob.headId ?? (blob.history?.length ? blob.history[blob.history.length - 1].id : rootCommit.id),
       seed: blob.seed ?? randomSeed(),
-      customDirectives: blob.customDirectives ?? get().customDirectives,
+      // customDirectives is deliberately ABSENT: a project switch must not touch
+      // the device-level verb pack. `blob.customDirectives ?? …` used to clobber
+      // it, because the blob held `[]` and `[] ?? x` is `[]` (A-4).
       effort: blob.effort ?? 'auto',
       stagedEdit: null,
       hunkEnabled: {},
@@ -713,8 +726,19 @@ export const useStore = create<RefrainState>((set, get) => {
     },
 
     togglePlay: async () => {
-      if (get().playing) get().stop();
-      else await get().play();
+      // An in-flight latch (D9). `play()` awaits engine work, so two rapid
+      // toggles — a fast double-click on the titlebar button, or any second
+      // caller — could interleave stop()/play(). Since a true stop REWINDS the
+      // scheduler to 0, that pair reads on screen as the cycle counter jumping
+      // back to zero: indistinguishable from the v0.1 "clock dies" bug.
+      if (toggleInFlight) return;
+      toggleInFlight = true;
+      try {
+        if (get().playing) get().stop();
+        else await get().play();
+      } finally {
+        toggleInFlight = false;
+      }
     },
 
     panic: async () => {
@@ -791,7 +815,9 @@ export const useStore = create<RefrainState>((set, get) => {
       const voiceIds = get().voices.map((v) => v.id);
       set((s) => ({ messages: [...s.messages, { id: id('m'), role: 'user', text: trimmed }] }));
 
-      const intent = interpret(trimmed, voiceIds);
+      // the user's own verbs resolve here, so a forged verb applies offline like
+      // a built-in instead of falling through to a provider (A-5)
+      const intent = interpret(trimmed, voiceIds, get().customDirectives);
 
       if (intent.kind === 'directive') {
         get().runDirective(intent.id, intent.voiceHint, intent.degree);
@@ -835,7 +861,20 @@ export const useStore = create<RefrainState>((set, get) => {
         await answerTurn(trimmed);
         return;
       }
-      // unknown — try the LLM (generation role) if connected, else explain
+      // A slash token that is not a real verb: say so plainly and stop. It used
+      // to fall through to the LLM below, which answered in the Maestro's normal
+      // voice — so a typo read like a considered reply, and `/__proto__` billed a
+      // real call. Nothing runs, nothing is staged, no provider is consulted (A-7).
+      if (intent.kind === 'unknown-command') {
+        const near = suggestDirectives(intent.token, get().customDirectives);
+        const text = intent.token
+          ? `No such command **/${intent.token}** — nothing ran.${near.length ? ` Did you mean ${near.map((x) => `*${x}*`).join(', ')}?` : ''} Press **/** for the palette.`
+          : 'Nothing after the slash — press **/** for the palette.';
+        set((s) => ({ messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'error', text }] }));
+        get().log(`no such command /${intent.token}`, 'warning');
+        return;
+      }
+      // unknown prose — try the LLM (generation role) if connected, else explain
       const route = provForRole('generation');
       if (route) {
         await llmEditTurn(trimmed, route);
@@ -912,14 +951,26 @@ export const useStore = create<RefrainState>((set, get) => {
       const base = stagedBase();
       const activeVoiceId = get().activeVoiceId;
       const parsed = parseScore(base);
-      const voice =
-        (voiceHint && parsed.voices.find((v) => v.id === voiceHint)) ||
-        parsed.voices.find((v) => v.id === activeVoiceId) ||
-        parsed.voices[0];
+      // Voice ids carry no sigil, so a `$drums` hint has to be normalised or it
+      // misses and we silently edit somebody else's voice (A-10).
+      const hint = normalizeVoiceHint(voiceHint);
+      const byHint = hint
+        ? parsed.voices.find((v) => v.id === hint) ?? parsed.voices.find((v) => v.id.toLowerCase() === hint.toLowerCase())
+        : undefined;
+      if (hint && !byHint) {
+        // a NAMED target that isn't in the score must never quietly retarget
+        const names = parsed.voices.map((v) => v.sigil).join(', ');
+        const text = `No voice \`$${hint}\` in this score — I have ${names || 'no voices yet'}.`;
+        set((s) => ({ messages: [...s.messages, { id: id('m'), role: 'maestro', shape: 'error', text }] }));
+        get().log(`no voice $${hint}`, 'warning');
+        return;
+      }
+      const voice = byHint || parsed.voices.find((v) => v.id === activeVoiceId) || parsed.voices[0];
 
       // A user-authored directive (spec §10) appends its saved chain fragment to
       // the target voice — deterministic and inspectable like the built-ins.
-      const custom = DIRECTIVE_BY_ID[directiveId] ? null : get().customDirectives.find((d) => d.id === directiveId);
+      // Object.hasOwn, not a bare index: DIRECTIVE_BY_ID['toString'] is truthy.
+      const custom = Object.hasOwn(DIRECTIVE_BY_ID, directiveId) ? null : get().customDirectives.find((d) => d.id === directiveId);
       let result: ReturnType<typeof applyDirective>;
       if (custom) {
         if (!voice) result = { error: 'No voice selected — click a voice in the outline, or name one.' };
@@ -936,10 +987,11 @@ export const useStore = create<RefrainState>((set, get) => {
         get().log(result.error, 'warning');
         return;
       }
+      // no `model`: applyDirective is a deterministic, offline transform and
+      // provenance must never name a model that was never called (A-1)
       const prov: Provenance = {
         source: 'directive',
         directive: directiveId,
-        model: llmModelLabel('directives'),
         when: Date.now(),
         cycle: nowCycle(),
       };
@@ -996,7 +1048,12 @@ export const useStore = create<RefrainState>((set, get) => {
       // snapshot the pre-break mix as a scene so the state is recoverable
       const preBreakLevels: Record<string, number> = {};
       for (const v of get().voices) preBreakLevels[v.id] = v.muted ? 0 : 1;
-      set((s) => ({ scenes: [...s.scenes, { id: id('sc'), name: 'pre-break', levels: preBreakLevels, provenance: { source: 'agent', when: Date.now(), cycle: nowCycle() } }] }));
+      set((s) => ({
+        scenes: [
+          ...s.scenes,
+          { id: id('sc'), name: 'pre-break', levels: preBreakLevels, provenance: { source: 'agent', prompt: '/break', seed: get().seed, when: Date.now(), cycle: nowCycle() } },
+        ],
+      }));
 
       const plan: import('../types').PlanStep[] = [
         { id: id('ps'), text: 'Snapshot the current mix as scene pre-break', status: 'done' },
@@ -1007,13 +1064,14 @@ export const useStore = create<RefrainState>((set, get) => {
       const reasoning =
         'A break needs space, then tension, then release. Mask the rhythm section out for six bars, fill the gap with a riser so the ear has somewhere to go, and restore with an accent so the return lands. ' +
         (kept.length ? `${kept.map((v) => '$' + v.id).join(', ')} carr${kept.length > 1 ? 'y' : 'ies'} the harmony through the hole so the key never disappears.` : '');
-      // `thinking` records whether a model's reasoning tier was actually spent
-      // (honest: offline/deterministic → false). The visible reasoning TRACE of
-      // this deterministic agent follows the effort tier directly — shown in
-      // auto/thinking, hidden in fast (spec §12.4) — so it stays useful offline.
-      const { thinking } = get().resolveTurnEffort('generation', true);
+      // The visible reasoning TRACE of this deterministic agent follows the effort
+      // tier directly — shown in auto/thinking, hidden in fast (spec §12.4) — so
+      // it stays useful offline. `thinking` in provenance stays false regardless:
+      // no reasoning tier is ever actually spent here (A-1).
       const trace = get().effort !== 'fast';
-      const prov: Provenance = { source: 'agent', prompt: '/break', model: llmModelLabel('generation') ?? 'deterministic', thinking, effort: get().effort, when: Date.now(), cycle: nowCycle() };
+      // /break runs parseScore + queryEvents + computeHunks only: no model, and
+      // no reasoning tier spent — claiming either would be the same lie (A-1)
+      const prov: Provenance = { source: 'agent', prompt: '/break', thinking: false, effort: get().effort, when: Date.now(), cycle: nowCycle() };
 
       stageEditInternal({ summary: 'Break staged — rhythm drops for six bars, a riser fills 7–8, everything returns hard on bar 9. Auditioning now; commits on the next phrase.', newCode, directive: 'break', provenance: prov });
       set((s) => ({
@@ -1118,7 +1176,8 @@ export const useStore = create<RefrainState>((set, get) => {
       const preParent = get().headId; // parked forks branch off here, as siblings
       const newScore = `${base}\n\n${lane.code}`;
       const voices = buildVoices(newScore, get().voiceState);
-      const prov: Provenance = { source: 'lanes', prompt: ls.prompt, seed: ls.seed, model: llmModelLabel('generation'), when: Date.now(), cycle: nowCycle() };
+      // no `model`: lanes come from deterministic templates (A-1)
+      const prov: Provenance = { source: 'lanes', prompt: ls.prompt, seed: ls.seed, when: Date.now(), cycle: nowCycle() };
       set({
         score: newScore,
         committed: newScore,
@@ -1148,24 +1207,44 @@ export const useStore = create<RefrainState>((set, get) => {
       if (!ls) return;
       // reroll draws a fresh seed by default (the "⚂ new" gesture); the seed
       // controls (reseed) can reproduce or nudge instead.
-      const seed = randomSeed();
-      const lanes = buildLanes(ls.prompt, get().voices.map((v) => v.id), seed);
+      const voiceIds = get().voices.map((v) => v.id);
+      const prev = ls.lanes.map((l) => laneBody(l.code)).join('\u0000');
+      let seed = randomSeed();
+      let lanes = buildLanes(ls.prompt, voiceIds, seed);
+      // a fresh seed can still land on the same 12-key content — nudge until the
+      // set actually differs, and store the seed we really used so it stays
+      // citable and reproducible (A-6)
+      for (let a = 0; a < 12 && lanes.map((l) => laneBody(l.code)).join('\u0000') === prev; a++) {
+        seed = (seed + 1) & 0xffff;
+        lanes = buildLanes(ls.prompt, voiceIds, seed);
+      }
       set({ laneSet: { ...ls, lanes, soloId: null, seed }, seed });
       // an audition may be sounding (mix muted) — restore the live mix
       if (ls.soloId && get().playing) evalCurrent(get().score);
     },
 
-    // Refine ONE lane (spec §10: "refine the keeper") — regenerate just that fork
-    // from a nudged seed, leaving its siblings untouched. Reproducible per seed.
+    // Refine ONE lane (spec §10: "refine the keeper") — walk that fork's content
+    // key forward until it lands on something unlike every lane already on
+    // screen, leaving its siblings untouched. Still fully deterministic.
+    //
+    // This used to regenerate the whole set from `seed + idx + 1` and then take
+    // index `idx`, i.e. key `seed + 2*idx + 1` — which for lane A is ALWAYS
+    // sibling B's key, so refining A reproduced B byte for byte at every seed.
+    // It also never advanced the stored key, so a second refine was a no-op (A-6).
     refineLane: (laneId) => {
       const ls = get().laneSet;
       if (!ls) return;
       const idx = ls.lanes.findIndex((l) => l.id === laneId);
       if (idx < 0) return;
-      const existing = ls.lanes.filter((_, i) => i !== idx).map((l) => l.voiceId);
-      const fresh = buildLanes(ls.prompt, [...get().voices.map((v) => v.id), ...existing], (ls.seed + idx + 1) & 0xffff);
-      const pick = fresh[idx] ?? fresh[0];
-      const lanes = ls.lanes.map((l, i) => (i === idx ? { ...l, name: pick.name, desc: pick.desc, shape: pick.shape, code: `$${l.voiceId}: ${pick.code.replace(/^\$[^:]+:\s*/, '')}` } : l));
+      const target = ls.lanes[idx];
+      const avoid = ls.lanes.map((l) => laneBody(l.code)); // everything visible, its own body included
+      const from = (target.variantKey ?? ls.seed + idx) + 1;
+      const draft = refineLaneDraft(ls.prompt, from, avoid);
+      const lanes = ls.lanes.map((l, i) =>
+        i === idx
+          ? { ...l, name: draft.name, desc: draft.desc, shape: draft.shape, code: `$${l.voiceId}: ${draft.body}`, variantKey: draft.variantKey }
+          : l,
+      );
       set({ laneSet: { ...ls, lanes } });
       if (ls.soloId === laneId && get().playing) get().soloLane(laneId);
     },
@@ -1178,8 +1257,17 @@ export const useStore = create<RefrainState>((set, get) => {
         const silent = v.muted || (anySolo && !v.solo);
         levels[v.id] = silent ? 0 : 1;
       }
-      const scene: Scene = { id: id('sc'), name: name || `scene ${get().scenes.length + 1}`, levels, provenance: { source: 'you', when: Date.now(), cycle: nowCycle() } };
+      // the seed rides along so a captured mix names the generation it belongs to
+      const scene: Scene = {
+        id: id('sc'),
+        name: name || `scene ${get().scenes.length + 1}`,
+        levels,
+        provenance: { source: 'you', seed: get().seed, when: Date.now(), cycle: nowCycle() },
+      };
       set((s) => ({ scenes: [...s.scenes, scene], activeSceneId: scene.id }));
+      // capture is a discrete act of saving: flush now rather than waiting for
+      // some later commit to happen to persist it (A-2)
+      persistProject({ immediate: true });
       get().log(`scene “${scene.name}” captured`, 'success');
     },
 
@@ -1192,11 +1280,14 @@ export const useStore = create<RefrainState>((set, get) => {
       }
       set({ voiceState: vstate, voices: buildVoices(get().score, vstate), activeSceneId: sceneId });
       if (get().playing) evalCurrent(get().score);
+      persistProject(); // debounced: the launched mix is worth keeping, the selection isn't urgent
       get().log(`▸ scene “${scene.name}”`, 'info');
     },
 
-    deleteScene: (sceneId) =>
-      set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== sceneId), activeSceneId: s.activeSceneId === sceneId ? null : s.activeSceneId })),
+    deleteScene: (sceneId) => {
+      set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== sceneId), activeSceneId: s.activeSceneId === sceneId ? null : s.activeSceneId }));
+      persistProject({ immediate: true }); // a deletion must not be able to come back on reload (A-2)
+    },
 
     // -------- providers --------
     setProviderKey: (pid, key) => {
@@ -1481,6 +1572,8 @@ export const useStore = create<RefrainState>((set, get) => {
 
     // -------- projects (spec §08) --------
     hydrateFromStorage: () => {
+      // the ONE place the legacy per-project verb field is drained (A-4)
+      set({ customDirectives: migrateCustomDirectives() });
       const activeId = activeProjectId();
       const blob = activeId ? loadProject(activeId) : null;
       if (blob) {
@@ -1496,15 +1589,18 @@ export const useStore = create<RefrainState>((set, get) => {
 
     newProject: (name) => {
       const pid = `p${Date.now().toString(36)}`;
-      const root: Commit = { id: id('c'), parentId: null, label: `init · ${name}`, score: DEFAULT_SCORE, voiceState: {}, scenes: [], provenance: { source: 'init', when: Date.now() } };
+      // its OWN name in the header — a new project used to open claiming to be
+      // "nightjar — set 02" whatever the user called it (A-9)
+      const score = starterScore(name);
+      const root: Commit = { id: id('c'), parentId: null, label: `init · ${name}`, score, voiceState: {}, scenes: [], provenance: { source: 'init', when: Date.now() } };
       setActiveProjectId(pid);
       set({
         projectId: pid,
         projectName: name,
-        score: DEFAULT_SCORE,
-        committed: DEFAULT_SCORE,
+        score,
+        committed: score,
         voiceState: {},
-        voices: buildVoices(DEFAULT_SCORE, {}),
+        voices: buildVoices(score, {}),
         scenes: [],
         activeSceneId: null,
         history: [root],
@@ -1517,7 +1613,7 @@ export const useStore = create<RefrainState>((set, get) => {
         arcSelection: null,
       });
       scheduleTicks();
-      if (get().playing) evalCurrent(DEFAULT_SCORE);
+      if (get().playing) evalCurrent(score);
       persistProject();
       get().log(`new project “${name}”`, 'success');
     },
@@ -1527,7 +1623,9 @@ export const useStore = create<RefrainState>((set, get) => {
       if (!blob) return;
       setActiveProjectId(pid);
       applyBlob(blob);
-      set({ projects: listProjects() });
+      // verbs are device-level: re-read storage truth so a switch can never
+      // leave the runtime list stale (or empty) behind another tab's edit (A-4)
+      set({ projects: listProjects(), customDirectives: loadCustomDirectives() });
       if (get().playing) evalCurrent(blob.score);
       get().log(`▸ project “${blob.name}”`, 'info');
     },
@@ -1628,6 +1726,17 @@ export const useStore = create<RefrainState>((set, get) => {
 });
 
 // ---- voice-granular merge: lowest common ancestor of two commits (spec §12.6) ----
+/**
+ * Look up a commit in a history tree. Exported for the History surface, which
+ * needs to resolve a merge node's SECOND parent (`mergeParentId`) into something
+ * a reader can actually see — the data model has tracked it since §12.6, but
+ * nothing ever surfaced it (A-3).
+ */
+export function commitById(history: Commit[], cid: string | null | undefined): Commit | null {
+  if (!cid) return null;
+  return history.find((c) => c.id === cid) ?? null;
+}
+
 function lca(history: Commit[], aId: string, bId: string): Commit | null {
   const byId = new Map(history.map((c) => [c.id, c]));
   const ancestors = new Set<string>();
@@ -1748,4 +1857,16 @@ function describeExpr(expr: string): string {
 
 function stripCode(text: string): string {
   return text.replace(/```[\s\S]*?```/g, '').trim();
+}
+
+// A dev-only handle for the tier-3 rubric (A-12). The A2 gate — "HUSH fades over
+// one cycle without snapping back" — is otherwise unobservable to an agent: the
+// meters are `playing`-gated by design and Performance Mode unmounts the
+// analyser-backed Spectrum lens, so the fade and a real signal reading can never
+// be seen together. This exposes the store; `engine.sampleOutput()` (see
+// strudelEngine.ts) exposes the audio. Instrumentation only — no component reads
+// this, and it does NOT close the gate: a human still has to listen.
+if (import.meta.env.DEV) {
+  const g = globalThis as any;
+  g.__refrain = { ...(g.__refrain ?? {}), store: useStore };
 }

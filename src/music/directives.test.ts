@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { applyDirective, interpret, DIRECTIVES, DIRECTIVE_BY_ID } from './directives';
+import { applyDirective, interpret, normalizeVoiceHint, suggestDirectives, DIRECTIVES, DIRECTIVE_BY_ID } from './directives';
+import type { CustomDirective } from '../types';
 import { parseScore } from './parseScore';
 
 // Pure-logic tier: no mocks, no DOM. directives.ts is wholly deterministic — each
@@ -246,11 +247,163 @@ describe('interpret — slash commands', () => {
     });
   });
 
-  it('returns unknown for an unrecognised slash command', () => {
+  // RE-BASELINED for A-7: an unrecognised *slash* token is now distinguishable
+  // from unparseable prose, so the store can say "no such command" instead of
+  // handing the token to an LLM. Prose still yields plain `unknown`.
+  it('returns unknown-command for an unrecognised slash command', () => {
     expect(interpret('/notathing $hats', ['hats'])).toEqual({
-      kind: 'unknown',
+      kind: 'unknown-command',
+      token: 'notathing',
       text: '/notathing $hats',
     });
+  });
+
+  it('still returns plain unknown for unparseable prose', () => {
+    expect(interpret('mauve', ['hats'])).toEqual({ kind: 'unknown', text: 'mauve' });
+  });
+
+  it('returns unknown-command with an empty token for a bare slash', () => {
+    expect(interpret('/', ['hats'])).toEqual({ kind: 'unknown-command', token: '', text: '/' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A21 — slash hygiene. The safety property that passed the live audit must keep
+// holding: a prototype member name must resolve to NOTHING and throw NOTHING.
+// A-7 adds a third guarantee — it must also fire no LLM call, which is asserted
+// at the store tier (store.test.ts).
+// ---------------------------------------------------------------------------
+describe('slash hygiene — prototype keys resolve to nothing (A21)', () => {
+  const POISON = ['toString', 'constructor', '__proto__', 'valueOf', 'hasOwnProperty'];
+
+  it.each(POISON)('/%s does not throw', (tok) => {
+    expect(() => interpret(`/${tok}`, ['hats'])).not.toThrow();
+  });
+
+  it.each(POISON)('/%s resolves to unknown-command, never a directive', (tok) => {
+    const intent = interpret(`/${tok}`, ['hats']);
+    expect(intent.kind).toBe('unknown-command');
+    expect(intent).not.toHaveProperty('id');
+  });
+
+  it.each(POISON)('applyDirective("%s") returns an honest error, not a default transform', (tok) => {
+    const parsed = parseScore(SCORE);
+    expect(applyDirective(tok, parsed, SCORE, parsed.voices[0])).toEqual({
+      error: `Unknown directive “${tok}”.`,
+    });
+  });
+
+  it.each(POISON)('a poisoned token is not treated as a custom verb either (%s)', (tok) => {
+    const custom: CustomDirective[] = [{ id: 'u_shimmer', label: 'Shimmer', aliases: [], chain: '.room(0.5)', blurb: '' }];
+    expect(interpret(`/${tok}`, ['hats'], custom).kind).toBe('unknown-command');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-5 — a forged verb is a deterministic chain, so it must resolve through
+// interpret() exactly like a built-in and never reach a provider.
+// ---------------------------------------------------------------------------
+describe('interpret — custom directives (A-5)', () => {
+  const shimmer: CustomDirective = {
+    id: 'u_shimmer',
+    label: 'Shimmer',
+    aliases: ['glisten'],
+    chain: '.room(0.5).lpf(1200)',
+    blurb: 'air',
+  };
+
+  it('resolves a custom verb by its label', () => {
+    expect(interpret('/shimmer $pad', ['pad'], [shimmer])).toEqual({
+      kind: 'directive',
+      id: 'u_shimmer',
+      voiceHint: 'pad',
+      degree: undefined,
+    });
+  });
+
+  it('resolves a custom verb by its id', () => {
+    expect(interpret('/u_shimmer $pad', ['pad'], [shimmer]).kind).toBe('directive');
+  });
+
+  it('resolves a custom verb by an alias', () => {
+    expect(interpret('/glisten $pad', ['pad'], [shimmer])).toMatchObject({ kind: 'directive', id: 'u_shimmer' });
+  });
+
+  it('resolves a custom verb from free text', () => {
+    expect(interpret('add some glisten to the pad', ['pad'], [shimmer])).toMatchObject({
+      kind: 'directive',
+      id: 'u_shimmer',
+      voiceHint: 'pad',
+    });
+  });
+
+  it('a custom verb never shadows a built-in of the same name', () => {
+    const impostor: CustomDirective = { id: 'u_darker', label: 'darker', aliases: [], chain: '.gain(0)', blurb: '' };
+    expect(interpret('/darker $bass', ['bass'], [impostor])).toMatchObject({ kind: 'directive', id: 'darker' });
+  });
+
+  it('is unchanged when no custom pack is passed (back-compat)', () => {
+    expect(interpret('/shimmer $pad', ['pad'])).toMatchObject({ kind: 'unknown-command', token: 'shimmer' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-10 — voice ids never carry the sigil, so a hint must be normalised or the
+// directive silently mis-targets another voice.
+// ---------------------------------------------------------------------------
+describe('normalizeVoiceHint (A-10)', () => {
+  it.each([
+    ['$drums', 'drums'],
+    ['$$drums', 'drums'],
+    ['  drums ', 'drums'],
+    ['  $drums  ', 'drums'],
+    ['drums', 'drums'],
+  ])('normalises %s to %s', (input, expected) => {
+    expect(normalizeVoiceHint(input)).toBe(expected);
+  });
+
+  it.each([undefined, '', '   ', '$', '$$'])('treats %s as no hint', (input) => {
+    expect(normalizeVoiceHint(input as string | undefined)).toBeUndefined();
+  });
+
+  it('strips the sigil when interpreting a slash directive', () => {
+    expect(interpret('/darker $bass', ['bass'])).toMatchObject({ voiceHint: 'bass' });
+  });
+
+  it('accepts a bare voice id in the wrong case', () => {
+    expect(interpret('/darker Bass', ['bass'])).toMatchObject({ kind: 'directive', voiceHint: 'Bass' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-7 — suggestions are a deterministic lookup over the real vocabulary.
+// ---------------------------------------------------------------------------
+describe('suggestDirectives (A-7)', () => {
+  it('suggests a real verb for a near-miss prefix', () => {
+    expect(suggestDirectives('dark')).toContain('darker');
+  });
+
+  it('returns nothing for a token that resembles no verb', () => {
+    expect(suggestDirectives('zzzqqq')).toEqual([]);
+  });
+
+  it('returns nothing for an empty token', () => {
+    expect(suggestDirectives('')).toEqual([]);
+  });
+
+  it('includes a custom verb when one is passed', () => {
+    const custom: CustomDirective[] = [{ id: 'u_shimmer', label: 'Shimmer', aliases: [], chain: '.room(0.5)', blurb: '' }];
+    expect(suggestDirectives('shim', custom)).toContain('Shimmer');
+  });
+
+  it('honours the limit and never repeats a label', () => {
+    const out = suggestDirectives('a', [], 3);
+    expect(out.length).toBeLessThanOrEqual(3);
+    expect(new Set(out).size).toBe(out.length);
+  });
+
+  it('suggests a slash command too', () => {
+    expect(suggestDirectives('vari')).toContain('/variations');
   });
 });
 

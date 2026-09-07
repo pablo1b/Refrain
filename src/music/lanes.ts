@@ -7,6 +7,16 @@
 
 import type { Lane, LaneShape } from '../types';
 
+/**
+ * Format a generated number for emission: trims IEEE noise (0.2 + 0.1 → "0.3")
+ * WITHOUT touching the seed maths. Rounding a value that feeds the variant
+ * selection would change the draw sequence and break seed reproducibility, so
+ * this is applied at the point a number becomes STRING and nowhere else (A-11).
+ */
+export function fmtNum(x: number): string {
+  return String(+x.toFixed(4));
+}
+
 let laneCounter = 0;
 const lid = () => `ln${Date.now().toString(36)}${(laneCounter++).toString(36)}`;
 
@@ -24,14 +34,14 @@ const DROP_TEMPLATES: Template[] = [
     voice: 'fx',
     shape: 'sweep',
     desc: '2 bars',
-    expr: (v) => `s("white").lpf(sine.range(200, ${6000 + v * 1500}).slow(2)).gain(0.45)`,
+    expr: (v) => `s("white").lpf(sine.range(200, ${fmtNum(6000 + v * 1500)}).slow(2)).gain(0.45)`,
   },
   {
     name: 'snare roll',
     voice: 'rl',
     shape: 'roll',
     desc: '1 bar',
-    expr: (v) => `s("sd*[8 ${12 + v * 4}]").gain(saw.range(0.35, 1)).bank("RolandTR909")`,
+    expr: (v) => `s("sd*[8 ${fmtNum(12 + v * 4)}]").gain(saw.range(0.35, 1)).bank("RolandTR909")`,
   },
   {
     name: 'silence → hit',
@@ -45,7 +55,7 @@ const DROP_TEMPLATES: Template[] = [
     voice: 'st',
     shape: 'rise',
     desc: '2 bars',
-    expr: (v) => `note("c2").s("sawtooth").struct("t ~ ~ ~").distort("${1.4 + v * 0.4}:0.4")`,
+    expr: (v) => `note("c2").s("sawtooth").struct("t ~ ~ ~").distort("${fmtNum(1.4 + v * 0.4)}:0.4")`,
   },
 ];
 
@@ -55,14 +65,14 @@ const GEN_TEMPLATES: Template[] = [
     voice: 'arp',
     shape: 'rise',
     desc: '1 bar',
-    expr: (v) => `note("c4 eb4 g4 bb4").s("triangle").fast(${2 + v}).gain(0.45)`,
+    expr: (v) => `note("c4 eb4 g4 bb4").s("triangle").fast(${fmtNum(2 + v)}).gain(0.45)`,
   },
   {
     name: 'pulse bass',
     voice: 'pls',
     shape: 'roll',
     desc: '1 bar',
-    expr: (v) => `note("c2*4").s("sawtooth").lpf(${700 + v * 300}).gain(0.55)`,
+    expr: (v) => `note("c2*4").s("sawtooth").lpf(${fmtNum(700 + v * 300)}).gain(0.55)`,
   },
   {
     name: 'shaker texture',
@@ -76,11 +86,61 @@ const GEN_TEMPLATES: Template[] = [
     voice: 'stab',
     shape: 'gap',
     desc: '2 bars',
-    expr: (v) => `note("<Cm7 Fm9>").s("sawtooth").struct("t ~ t ~").room(${0.2 + v * 0.1})`,
+    expr: (v) => `note("<Cm7 Fm9>").s("sawtooth").struct("t ~ t ~").room(${fmtNum(0.2 + v * 0.1)})`,
   },
 ];
 
 const WORD_NUM: Record<string, number> = { two: 2, three: 3, four: 4 };
+
+/** Drop/build prompts get the riser pool; everything else the generic one. */
+function poolFor(prompt: string): Template[] {
+  const lower = prompt.toLowerCase();
+  const dropish = /\b(drop|build|hard|riser|fill|peak|climax|energy|intense)\b/.test(lower);
+  return dropish ? DROP_TEMPLATES : GEN_TEMPLATES;
+}
+
+/**
+ * A lane's musical content is identified by ONE integer key: the template is
+ * `key mod pool-length` and the variant is `key mod 3`. Two lanes therefore
+ * collide iff their keys agree modulo lcm(4, 3) = 12. `buildLanes` gives lane
+ * `i` the key `seed + i`; refine walks the key forward until the body is unlike
+ * everything already on screen (A-6).
+ */
+export interface LaneDraft {
+  name: string;
+  desc: string;
+  shape: LaneShape;
+  voice: string; // base voice id, before collision-dedup
+  body: string; // the expression WITHOUT the `$voice: ` prefix
+  variantKey: number; // the key that produced this body
+}
+
+/** The expression of a `$voice: expr` line, without the sigil prefix. */
+export function laneBody(code: string): string {
+  return code.replace(/^\s*\$[^:]+:\s*/, '');
+}
+
+/** The lane content for one key — pure, no RNG, no counter. */
+export function laneDraft(prompt: string, key: number): LaneDraft {
+  const pool = poolFor(prompt);
+  const t = pool[((key % pool.length) + pool.length) % pool.length];
+  const variant = ((key % 3) + 3) % 3;
+  return { name: t.name, desc: t.desc, shape: t.shape, voice: t.voice, body: t.expr(variant), variantKey: key };
+}
+
+/**
+ * The next lane content that is NOT already on screen. Deterministic: a pure
+ * function of (prompt, fromKey, avoid). 12 distinct bodies exist per pool and at
+ * most 4 lanes are ever visible, so the search always succeeds; the trailing
+ * return is an unreachable-but-honest fallback rather than a throw.
+ */
+export function refineLaneDraft(prompt: string, fromKey: number, avoid: string[], attempts = 12): LaneDraft {
+  for (let a = 0; a < attempts; a++) {
+    const d = laneDraft(prompt, fromKey + a);
+    if (!avoid.includes(d.body)) return d;
+  }
+  return laneDraft(prompt, fromKey);
+}
 
 /** How many lanes to offer: 2–4, following the request (spec §10). */
 export function laneCount(prompt: string): number {
@@ -99,33 +159,30 @@ export function laneCount(prompt: string): number {
  * forks; a nudged seed rotates the template set + variant so it wanders one step.
  */
 export function buildLanes(prompt: string, existingIds: string[], seed = 0): Lane[] {
-  const lower = prompt.toLowerCase();
-  const dropish = /\b(drop|build|hard|riser|fill|peak|climax|energy|intense)\b/.test(lower);
-  const pool = dropish ? DROP_TEMPLATES : GEN_TEMPLATES;
   const n = laneCount(prompt);
-  // rotate the template set deterministically by the seed so different seeds
-  // surface different ideas, while the same seed is exactly reproducible.
-  const offset = ((seed % pool.length) + pool.length) % pool.length;
-  const templates = [...pool.slice(offset), ...pool.slice(0, offset)];
   const labels = ['A', 'B', 'C', 'D'];
   const used = new Set(existingIds);
 
-  return templates.slice(0, n).map((t, i) => {
+  const lanes: Lane[] = [];
+  for (let i = 0; i < n; i++) {
+    // lane i is keyed seed+i — the same rotation-by-seed as before, expressed as
+    // the one integer that identifies the content (A-6).
+    const d = laneDraft(prompt, seed + i);
     // never collide with an existing voice (or with another fork)
-    let voiceId = t.voice;
+    let voiceId = d.voice;
     let k = 1;
-    while (used.has(voiceId)) voiceId = `${t.voice}${k++}`;
+    while (used.has(voiceId)) voiceId = `${d.voice}${k++}`;
     used.add(voiceId);
-    // variant is deterministic in (seed, lane) → reproducible per seed
-    const variant = (seed + i) % 3;
-    return {
+    lanes.push({
       id: lid(),
       label: labels[i],
-      name: t.name,
-      desc: t.desc,
+      name: d.name,
+      desc: d.desc,
       voiceId,
-      shape: t.shape,
-      code: `$${voiceId}: ${t.expr(variant)}`,
-    } satisfies Lane;
-  });
+      shape: d.shape,
+      code: `$${voiceId}: ${d.body}`,
+      variantKey: d.variantKey,
+    } satisfies Lane);
+  }
+  return lanes;
 }

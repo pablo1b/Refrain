@@ -23,6 +23,24 @@ type Repl = {
 
 export type EngineStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * Peak + RMS of a time-domain buffer. Pure, so it is unit-testable without any
+ * Web Audio at all — which matters, because the thing it serves (A-12) exists
+ * precisely to make an otherwise unobservable audio behaviour observable.
+ */
+export function rmsPeak(buf: Float32Array): { rms: number; peak: number } {
+  if (!buf.length) return { rms: 0, peak: 0 };
+  let sum = 0;
+  let peak = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const v = buf[i];
+    sum += v * v;
+    const a = Math.abs(v);
+    if (a > peak) peak = a;
+  }
+  return { rms: Math.sqrt(sum / buf.length), peak };
+}
+
 /** One scheduled onset within a cycle: begin/dur in cycles (0..1), relative gain. */
 export interface EngineEvent {
   begin: number;
@@ -32,6 +50,9 @@ export interface EngineEvent {
 
 class StrudelEngine {
   private repl: Repl | null = null;
+  private masterTap: AnalyserNode | null = null;
+  private tappedNode: AudioNode | null = null;
+  private tapBuf: Float32Array<ArrayBuffer> | null = null;
   private transpile: ((code: string) => Promise<{ pattern: any }>) | null = null;
   private web: any = null;
   private analyser: AnalyserNode | null = null;
@@ -179,11 +200,67 @@ class StrudelEngine {
   }
 
   /**
-   * A master AnalyserNode for real RMS + FFT (the Meters + Spectrum lenses,
-   * spec §05). Best-effort: superdough exposes a master analyser via
-   * `getAnalyser(id)` — we look it up on the @strudel/web module. If the audio
-   * graph exposes no tap, returns null and the meters fall back to the honest
-   * event-driven envelopes. Cached once obtained.
+   * A MASTER output analyser — deliberately distinct from `getAnalyser()`, which
+   * returns superdough's per-`analyze` node and is SILENT unless a pattern opts
+   * in (superdough's own master tap is commented out upstream). This taps
+   * `controller.output.destinationGain`, the gain node everything audible passes
+   * through, and connects nowhere onward, so it is completely inaudible.
+   *
+   * Re-taps if superdough rebuilt its output graph (`output.reset()` nulls
+   * destinationGain). Testability only (A-12); no component reads this.
+   */
+  private masterAnalyser(): AnalyserNode | null {
+    if (!this.ready) return null; // never build an AudioContext before a gesture
+    const w = this.web;
+    if (!w || typeof w.getSuperdoughAudioController !== 'function') return null;
+    try {
+      const node = w.getSuperdoughAudioController()?.output?.destinationGain as AudioNode | null | undefined;
+      if (!node) return null;
+      if (this.masterTap && this.tappedNode === node) return this.masterTap;
+      // superdough rebuilt its output: drop the tap on the discarded node first,
+      // or it stays attached to a gain node nobody can reach any more.
+      try {
+        this.masterTap?.disconnect();
+      } catch {
+        /* already detached with its old graph */
+      }
+      const ac = (node as any).context as BaseAudioContext;
+      const a = new AnalyserNode(ac, { fftSize: 2048, smoothingTimeConstant: 0 });
+      node.connect(a); // leaf: no onward connection, so nothing is heard twice
+      this.masterTap = a;
+      this.tappedNode = node;
+      this.tapBuf = new Float32Array(new ArrayBuffer(a.fftSize * 4));
+      return a;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Sample what is actually reaching the speakers right now. Returns null when
+   * there is nothing to sample rather than a fake zero, so a caller can tell
+   * "silent" apart from "no tap" (A-12).
+   */
+  sampleOutput(): { rms: number; peak: number; cycle: number; playing: boolean; when: number } | null {
+    try {
+      const a = this.masterAnalyser();
+      if (!a) return null;
+      if (!this.tapBuf || this.tapBuf.length !== a.fftSize) this.tapBuf = new Float32Array(new ArrayBuffer(a.fftSize * 4));
+      a.getFloatTimeDomainData(this.tapBuf);
+      const { rms, peak } = rmsPeak(this.tapBuf);
+      return { rms, peak, cycle: this.now(), playing: this.started, when: Date.now() };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * superdough's per-`analyze` AnalyserNode, looked up on the @strudel/web
+   * module — feeds the Meters + Spectrum lenses (spec §05). Best-effort: it
+   * only carries audio for haps that set the `analyze` control, so if no tap is
+   * available this returns null and the meters fall back to the honest
+   * event-driven envelopes. Cached once obtained. For the whole audible mix,
+   * see `masterAnalyser()` / `sampleOutput()` instead.
    */
   getAnalyser(): AnalyserNode | null {
     if (this.analyser) return this.analyser;
@@ -252,3 +329,14 @@ class StrudelEngine {
 }
 
 export const engine = new StrudelEngine();
+
+// Dev-only instrumentation for the tier-3 rubric (A-12): the A2 release gate
+// ("HUSH fades over one cycle without snapping back") cannot otherwise be
+// observed by an agent, because the meters are `playing`-gated by design and
+// Performance Mode unmounts the analyser-backed Spectrum lens. Sampling the real
+// master output makes the fade measurable. It does NOT close the gate — the
+// shipped build is what a performer uses, so a human still has to listen.
+if (import.meta.env.DEV) {
+  const g = globalThis as any;
+  g.__refrain = { ...(g.__refrain ?? {}), sampleOutput: () => engine.sampleOutput() };
+}

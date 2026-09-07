@@ -12,10 +12,12 @@ vi.mock('../llm/providers', async (importOriginal) => {
   return { ...actual, chat: vi.fn() };
 });
 
-import { useStore } from './store';
+import { useStore, DEFAULT_SCORE, starterScore } from './store';
 import { engine } from '../audio/strudelEngine';
 import { chat } from '../llm/providers';
 import { resetStore, state } from '../../tests/helpers/store';
+import { buildLanes, laneBody } from '../music/lanes';
+import { LS_CUSTOM_DIRECTIVES, LS_CUSTOM_MIGRATED, saveProject, loadCustomDirectives, type ProjectBlob } from './projects';
 
 beforeEach(() => {
   (engine as any).__reset();
@@ -581,5 +583,494 @@ describe('custom directives (spec §10)', () => {
     const dir = state().customDirectives.find((d) => d.label === 'Shimmer')!;
     state().removeCustomDirective(dir.id);
     expect(state().customDirectives.find((d) => d.id === dir.id)).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// A-1 — provenance must never name a model that was never called. The audit
+// found 15 commits stamped "Gemini Flash" while a full network sweep proved
+// ZERO LLM requests fired.
+// ===========================================================================
+describe('provenance honesty (A-1)', () => {
+  /** Connect a provider whose label the old code would have stamped on a commit. */
+  function connectGoogle() {
+    state().setProviderKey('google', 'k');
+    state().setRoleProvider('directives', 'google', 'gemini-flash-lite-latest');
+    state().setRoleProvider('generation', 'google', 'gemini-flash-lite-latest');
+  }
+
+  it('a directive commit names no model, and calls no model', () => {
+    connectGoogle();
+    state().runDirective('darker');
+    state().acceptEdit();
+    const commit = state().history.at(-1)!;
+    expect(commit.provenance.source).toBe('directive');
+    expect(commit.provenance.model).toBeUndefined();
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('a committed lane names no model', async () => {
+    connectGoogle();
+    await state().sendMaestro('give me 3 ways into the drop');
+    const ls = state().laneSet!;
+    state().commitLane(ls.lanes[0].id);
+    const commit = state().history.at(-1)!;
+    expect(commit.provenance.source).toBe('lanes');
+    expect(commit.provenance.model).toBeUndefined();
+    expect(typeof commit.provenance.seed).toBe('number'); // the seed IS real provenance
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('/break names no model and claims no reasoning tier', async () => {
+    connectGoogle();
+    await state().sendMaestro('/break');
+    const prov = state().stagedEdit!.provenance!;
+    expect(prov.source).toBe('agent');
+    expect(prov.model).toBeUndefined();
+    // /break is parseScore + queryEvents + computeHunks: no tier is spent, so
+    // claiming `thinking` would be the same class of lie as naming a model.
+    expect(prov.thinking).toBe(false);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('a hand edit names no model', () => {
+    connectGoogle();
+    state().saveCheckpoint('by hand');
+    expect(state().history.at(-1)!.provenance.model).toBeUndefined();
+  });
+
+  it('positive control: a real LLM edit DOES name its model', async () => {
+    state().setProviderKey('anthropic', 'sk-x');
+    vi.mocked(chat).mockResolvedValue('```\n$drums: s("bd*4")\n```\nchanged');
+    await state().sendMaestro('reinvent the percussion entirely please');
+    expect(chat).toHaveBeenCalled();
+    expect(state().stagedEdit!.provenance!.model).toBeTruthy();
+  });
+});
+
+// ===========================================================================
+// A-2 — capturing a scene is a discrete act of saving. It used to reach disk
+// only when some later commit happened to flush, so a reload could lose it.
+// ===========================================================================
+describe('scene persistence (A-2)', () => {
+  const persisted = () => JSON.parse(localStorage.getItem(`refrain.project.${state().projectId}`)!) as ProjectBlob;
+
+  it('persists a captured scene immediately, with no timer advance', () => {
+    state().snapshotScene('verse');
+    expect(persisted().scenes.map((sc) => sc.name)).toContain('verse');
+  });
+
+  it('records provenance carrying the generation seed', () => {
+    state().snapshotScene('verse');
+    const scene = persisted().scenes.find((sc) => sc.name === 'verse')!;
+    expect(scene.provenance!.source).toBe('you');
+    expect(scene.provenance!.seed).toBe(state().seed);
+    expect(typeof scene.provenance!.when).toBe('number'); // shape, never the value
+  });
+
+  it('persists a deletion immediately, so it cannot come back on reload', () => {
+    state().snapshotScene('verse');
+    const id = state().scenes.find((sc) => sc.name === 'verse')!.id;
+    state().deleteScene(id);
+    expect(persisted().scenes.map((sc) => sc.name)).not.toContain('verse');
+  });
+
+  it("the /break agent's scene carries its own recipe", async () => {
+    await state().sendMaestro('/break');
+    const scene = state().scenes.find((sc) => sc.name === 'pre-break')!;
+    expect(scene.provenance!.source).toBe('agent');
+    expect(scene.provenance!.prompt).toBe('/break');
+    expect(scene.provenance!.model).toBeUndefined(); // deterministic (A-1)
+  });
+
+  it('keeps scene provenance through a persist round-trip', () => {
+    state().snapshotScene('verse');
+    const blob = persisted();
+    state().openProject(blob.id);
+    expect(state().scenes.find((sc) => sc.name === 'verse')!.provenance).toBeDefined();
+  });
+});
+
+// ===========================================================================
+// A-4 — a custom verb is device-level and must survive a project switch. The
+// blob held `[]`, and `[] ?? x` is `[]`, so opening a project wiped the list.
+// ===========================================================================
+describe('custom directives survive a project switch (A-4)', () => {
+  const VERB = { label: 'a13shimmer', aliases: [], chain: '.room(0.5).lpf(1200)', blurb: '' };
+
+  /** The real pre-fix state: verb in the device key, empty arrays in the blobs. */
+  function seedBothLocations() {
+    localStorage.removeItem(LS_CUSTOM_MIGRATED);
+    state().addCustomDirective(VERB);
+    const blob = JSON.parse(localStorage.getItem(`refrain.project.${state().projectId}`) ?? 'null');
+    if (blob) saveProject({ ...blob, customDirectives: [] });
+    saveProject({
+      id: 'other', name: 'other', score: '$drums: s("bd")', committed: '$drums: s("bd")',
+      history: [], headId: null, scenes: [], seed: 1, voiceState: {}, customDirectives: [], updated: 1,
+    });
+  }
+
+  it('survives hydrateFromStorage', () => {
+    seedBothLocations();
+    state().hydrateFromStorage();
+    expect(state().customDirectives.map((d) => d.label)).toContain('a13shimmer');
+  });
+
+  it('survives a new project', () => {
+    seedBothLocations();
+    state().newProject('scratch');
+    expect(state().customDirectives.map((d) => d.label)).toContain('a13shimmer');
+  });
+
+  it('survives an openProject round trip — the reported A15.4 failure', () => {
+    seedBothLocations();
+    state().openProject('other');
+    expect(state().customDirectives.map((d) => d.label)).toContain('a13shimmer');
+    state().hydrateFromStorage();
+    expect(state().customDirectives.map((d) => d.label)).toContain('a13shimmer');
+  });
+
+  it('is still invocable after the round trip', async () => {
+    seedBothLocations();
+    state().openProject('other');
+    await state().sendMaestro('/a13shimmer $drums');
+    expect(state().stagedEdit!.newCode).toContain('.room(0.5).lpf(1200)');
+  });
+
+  it('no longer writes the verb into the project blob', () => {
+    state().addCustomDirective(VERB);
+    state().snapshotScene('flush'); // forces an immediate persist
+    const blob = JSON.parse(localStorage.getItem(`refrain.project.${state().projectId}`)!);
+    expect(blob.customDirectives).toBeUndefined();
+  });
+
+  it('keeps writing the verb to the device-level key', () => {
+    state().addCustomDirective(VERB);
+    expect(loadCustomDirectives().map((d) => d.label)).toContain('a13shimmer');
+    expect(localStorage.getItem(LS_CUSTOM_DIRECTIVES)).toContain('a13shimmer');
+  });
+});
+
+// ===========================================================================
+// A-5 — a forged verb is a literal Strudel chain, so it must apply offline.
+// The audit caught `/a13shimmer $pad` firing a real, billable Gemini call.
+// ===========================================================================
+describe('custom directives are deterministic and offline (A-5)', () => {
+  beforeEach(() => {
+    state().addCustomDirective({ label: 'Shimmer', aliases: ['glisten'], chain: '.room(0.5).lpf(1200)', blurb: 'air' });
+  });
+
+  it('applies through the slash path without consulting a provider', async () => {
+    state().setProviderKey('google', 'k');
+    state().setRoleProvider('generation', 'google', 'gemini-flash-lite-latest');
+    await state().sendMaestro('/shimmer $hats');
+    expect(chat).not.toHaveBeenCalled();
+    expect(state().stagedEdit!.newCode).toContain('.room(0.5).lpf(1200)');
+    expect(state().stagedEdit!.provenance!.directive).toBe('u_shimmer');
+    expect(state().stagedEdit!.provenance!.model).toBeUndefined();
+  });
+
+  it('targets the named voice', async () => {
+    await state().sendMaestro('/shimmer $hats');
+    expect(state().stagedEdit!.targetVoiceId).toBe('hats');
+  });
+
+  it('works in local-only mode', async () => {
+    state().setProviderKey('google', 'k');
+    state().toggleLocalOnly();
+    await state().sendMaestro('/shimmer $hats');
+    expect(chat).not.toHaveBeenCalled();
+    expect(state().stagedEdit).not.toBeNull();
+  });
+
+  it('applies from free text too', async () => {
+    await state().sendMaestro('add some glisten to the hats');
+    expect(chat).not.toHaveBeenCalled();
+    expect(state().stagedEdit!.newCode).toContain('.room(0.5)');
+  });
+});
+
+// ===========================================================================
+// A-6 — refining lane A used to regenerate from `seed+idx+1` and take index
+// idx, i.e. key `seed+2*idx+1`, which for lane A is ALWAYS sibling B's key.
+// ===========================================================================
+describe('lane refine never duplicates a visible sibling (A-6)', () => {
+  const bodies = () => state().laneSet!.lanes.map((l) => laneBody(l.code));
+
+  async function threeLanes(seed: number) {
+    useStore.setState({ seed });
+    await state().sendMaestro('give me 3 ways to add a melody');
+    useStore.setState({ laneSet: { ...state().laneSet!, seed } });
+  }
+
+  it('the reported case: seed 0xE824, refining lane A', async () => {
+    await threeLanes(0xe824);
+    const before = bodies();
+    state().refineLane(state().laneSet!.lanes[0].id);
+    const after = bodies();
+    expect(after[0]).not.toBe(before[0]); // it actually changed
+    expect(before.slice(1)).not.toContain(after[0]); // and not into a sibling
+    expect(new Set(after).size).toBe(after.length); // no duplicates at all
+  });
+
+  it('leaves the lane identity and its siblings alone', async () => {
+    await threeLanes(0xe824);
+    const ls = state().laneSet!;
+    const target = ls.lanes[0];
+    const siblingBodies = bodies().slice(1);
+    state().refineLane(target.id);
+    const after = state().laneSet!.lanes;
+    expect(after[0].id).toBe(target.id);
+    expect(after[0].label).toBe(target.label);
+    expect(after[0].voiceId).toBe(target.voiceId);
+    expect(after.slice(1).map((l) => laneBody(l.code))).toEqual(siblingBodies);
+  });
+
+  it('a second refine yields a third distinct body (it used to be a no-op)', async () => {
+    await threeLanes(0xe824);
+    const laneId = state().laneSet!.lanes[0].id;
+    const b0 = bodies()[0];
+    state().refineLane(laneId);
+    const b1 = bodies()[0];
+    state().refineLane(laneId);
+    const b2 = bodies()[0];
+    expect(new Set([b0, b1, b2]).size).toBe(3);
+  });
+
+  it('holds for every lane index, at several seeds', async () => {
+    for (const seed of [0, 1, 7, 0x4f2a, 0xe824]) {
+      for (const idx of [0, 1, 2]) {
+        await threeLanes(seed);
+        const before = bodies();
+        state().refineLane(state().laneSet!.lanes[idx].id);
+        const after = bodies();
+        expect(new Set(after).size, `seed ${seed} idx ${idx}`).toBe(after.length);
+        expect(before.filter((_, i) => i !== idx)).not.toContain(after[idx]);
+      }
+    }
+  });
+
+  it('reroll never hands back the byte-identical set', async () => {
+    await threeLanes(0x1000);
+    const before = bodies();
+    // force randomSeed() to land on a seed congruent mod 12 → same content
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0x1000 / 0x10000);
+    try {
+      state().rerollLanes();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(bodies()).not.toEqual(before);
+  });
+
+  it('records the seed it actually used, so the set stays reproducible', async () => {
+    await threeLanes(0x2000);
+    state().rerollLanes();
+    const ls = state().laneSet!;
+    expect(laneBody(ls.lanes[0].code)).toBe(laneBody(buildLanes(ls.prompt, [], ls.seed)[0].code));
+  });
+});
+
+// ===========================================================================
+// A-7 — an unknown slash verb must say so and never consult a provider. The
+// audit saw /toString etc. produce normal-looking generated replies, and one
+// unexplained duplicate /__proto__ POST.
+// ===========================================================================
+describe('unknown slash commands (A-7)', () => {
+  beforeEach(() => {
+    state().setProviderKey('google', 'k');
+    state().setRoleProvider('generation', 'google', 'gemini-flash-lite-latest');
+  });
+
+  it.each(['/notathing', '/toString', '/constructor', '/__proto__', '/valueOf'])(
+    '%s says "no such command", stages nothing, and calls no model',
+    async (cmd) => {
+      await state().sendMaestro(cmd);
+      expect(chat).not.toHaveBeenCalled();
+      expect(state().stagedEdit).toBeNull();
+      const last = state().messages.at(-1)!;
+      expect(last.shape).toBe('error');
+      expect(last.text).toContain('No such command');
+    },
+  );
+
+  it('never throws on a prototype key', async () => {
+    await expect(state().sendMaestro('/__proto__')).resolves.toBeUndefined();
+  });
+
+  it('suggests a real verb for a near miss', async () => {
+    await state().sendMaestro('/darkr $hats');
+    expect(state().messages.at(-1)!.text).toContain('darker');
+  });
+
+  it('handles a bare slash without claiming a command name', async () => {
+    await state().sendMaestro('/');
+    expect(chat).not.toHaveBeenCalled();
+    expect(state().messages.at(-1)!.text).toContain('Nothing after the slash');
+  });
+
+  it('still routes genuine prose to the LLM', async () => {
+    vi.mocked(chat).mockResolvedValue('some answer');
+    await state().sendMaestro('reinvent the percussion entirely please');
+    expect(chat).toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// A-8 — NOT a defect: a directive stages, and only `accept` commits. This
+// pins the dispatch chain so it cannot silently rot.
+// ===========================================================================
+describe('a slash directive typed into the Maestro box (A-8)', () => {
+  it('stages a diff with its argument honoured, and commits only on accept', async () => {
+    const before = state().history.length;
+    await state().sendMaestro('/darker $drums');
+    expect(state().stagedEdit).not.toBeNull();
+    expect(state().stagedEdit!.targetVoiceId).toBe('drums');
+    expect(state().messages.at(-1)!.shape).toBe('diff');
+    expect(state().history.length).toBe(before); // staging is not committing
+    state().acceptEdit();
+    expect(state().history.length).toBe(before + 1);
+    expect(state().history.at(-1)!.label).toBe('/darker $drums');
+  });
+});
+
+// ===========================================================================
+// A-9 — a new project used to open claiming to be "nightjar — set 02".
+// ===========================================================================
+describe('new project starter score (A-9)', () => {
+  it('heads the score with the project\'s own name', () => {
+    state().newProject('a12scratch');
+    expect(state().score.split('\n')[0]).toBe('// a12scratch — set 01');
+    expect(state().score).not.toContain('nightjar');
+  });
+
+  it('labels the root commit and gives it the same score', () => {
+    state().newProject('a12scratch');
+    expect(state().history[0].label).toBe('init · a12scratch');
+    expect(state().history[0].score).toBe(state().score);
+  });
+
+  it('keeps the voices of the starter body', () => {
+    state().newProject('a12scratch');
+    expect(state().voices.map((v) => v.id)).toEqual(['drums', 'hats', 'bass', 'pad']);
+  });
+
+  it('falls back to "untitled" for an empty name', () => {
+    expect(starterScore('').split('\n')[0]).toBe('// untitled — set 01');
+    expect(starterScore().split('\n')[0]).toBe('// untitled — set 01');
+  });
+
+  it('leaves DEFAULT_SCORE byte-identical — the seeded song really is nightjar', () => {
+    // guards the A-9 refactor against moving bytes the v0.2.1 merge tests and
+    // the browser-tier editor test depend on
+    expect(DEFAULT_SCORE.split('\n')[0]).toBe('// nightjar — set 02');
+    expect(DEFAULT_SCORE).toContain('$drums: s("bd*2, ~ sd").bank("RolandTR909")');
+    expect(DEFAULT_SCORE.endsWith('.slow(2).gain(0.5)')).toBe(true);
+  });
+});
+
+// ===========================================================================
+// A-10 — voice ids carry no sigil, so an un-normalised hint mis-targeted.
+// ===========================================================================
+describe('voice-hint targeting (A-10)', () => {
+  it.each(['drums', '$drums', '$Drums', 'Drums'])('targets $drums for the hint %s', (hint) => {
+    state().runDirective('darker', hint);
+    expect(state().stagedEdit!.targetVoiceId).toBe('drums');
+  });
+
+  it('produces identical code for the sigil and bare forms', () => {
+    state().runDirective('darker', '$drums');
+    const withSigil = state().stagedEdit!.newCode;
+    state().rejectEdit();
+    state().runDirective('darker', 'drums');
+    expect(state().stagedEdit!.newCode).toBe(withSigil);
+  });
+
+  it('refuses a named voice that is not in the score instead of retargeting', () => {
+    state().runDirective('darker', '$nope');
+    expect(state().stagedEdit).toBeNull(); // the old code silently edited voices[0]
+    const last = state().messages.at(-1)!;
+    expect(last.shape).toBe('error');
+    expect(last.text).toContain('$nope');
+    expect(last.text).toContain('$drums'); // names what IS available
+  });
+
+  it('still falls back to the active voice when no hint is given', () => {
+    state().selectVoice('hats');
+    state().runDirective('darker');
+    expect(state().stagedEdit!.targetVoiceId).toBe('hats');
+  });
+});
+
+// ===========================================================================
+// D9 — togglePlay is async, so two rapid calls could interleave stop()/play().
+// A true stop REWINDS the scheduler, so that pair reads as a clock reset.
+// ===========================================================================
+describe('togglePlay re-entry guard (D9)', () => {
+  it('two concurrent toggles from stopped start the transport exactly once', async () => {
+    // The dangerous path is play(), which awaits the engine: a second caller
+    // arriving mid-await used to see `playing` still false and start a SECOND
+    // transport. (Two toggles from *playing* are not concurrent at all — stop()
+    // is synchronous, so the first call completes and pause-then-play is the
+    // correct outcome of pressing twice.)
+    (engine.evaluate as any).mockClear();
+    await Promise.all([state().togglePlay(), state().togglePlay()]);
+    expect(state().playing).toBe(true);
+    expect(engine.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it('a toggle arriving while play() is still awaiting is dropped', async () => {
+    (engine.evaluate as any).mockClear();
+    const first = state().togglePlay();
+    const second = state().togglePlay(); // lands mid-await
+    await Promise.all([first, second]);
+    expect(engine.evaluate).toHaveBeenCalledTimes(1);
+    expect(state().playing).toBe(true);
+  });
+
+  it('pausing a running transport still stops it exactly once', async () => {
+    await state().play();
+    (engine.stop as any).mockClear();
+    await state().togglePlay();
+    expect(state().playing).toBe(false);
+    expect(engine.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('sequential toggles still work normally', async () => {
+    await state().togglePlay();
+    expect(state().playing).toBe(true);
+    await state().togglePlay();
+    expect(state().playing).toBe(false);
+    await state().togglePlay();
+    expect(state().playing).toBe(true);
+  });
+
+  // D14 — CHARACTERISATION, not a defect. Two rapid toggles from a playing
+  // transport give pause-then-play, and the clock DOES rewind to 0, because a
+  // true stop() rewinds the scheduler (store.stop's own contract, and the real
+  // @strudel/core cyclist: stop() sets lastEnd = 0). A user double-clicking the
+  // transport button legitimately restarts from zero.
+  //
+  // This is deliberately NOT the bug the audit found. That bug was ONE keypress
+  // firing togglePlay TWICE — two window keydown owners, App.tsx and
+  // PerformanceMode — which reset a counter at ~2706 and read as the v0.1
+  // "clock dies" failure. It is fixed by making App.tsx the single owner
+  // (B-5, pinned in App.transport.test.tsx), not by debouncing here: a debounce
+  // would block a user who genuinely wants a fast pause-then-play.
+  //
+  // Pinned so nobody mistakes the rewind below for the clock-death bug and
+  // "fixes" it. If this test starts failing, the transport semantics changed.
+  it('two deliberate toggles from playing pause-then-play, and the clock rewinds by design', async () => {
+    await state().play();
+    (engine as any).__advance(2706); // a long live session
+    expect(engine.now()).toBe(2706);
+
+    await state().togglePlay(); // pause — a true stop rewinds the scheduler
+    expect(state().playing).toBe(false);
+    expect(engine.now()).toBe(0);
+
+    await state().togglePlay(); // play again, from the top
+    expect(state().playing).toBe(true);
+    expect(engine.now()).toBe(0);
   });
 });

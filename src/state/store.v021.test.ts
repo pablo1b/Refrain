@@ -11,7 +11,7 @@ vi.mock('../llm/providers', async (importOriginal) => {
   return { ...actual, chat: vi.fn() };
 });
 
-import { useStore, DEFAULT_SCORE } from './store';
+import { useStore, DEFAULT_SCORE, commitById } from './store';
 import { engine } from '../audio/strudelEngine';
 import { resetStore, state } from '../../tests/helpers/store';
 
@@ -174,5 +174,55 @@ describe('voice-granular merge (spec §12.6)', () => {
     const head = state().history.find((c) => c.id === state().headId);
     expect(head?.provenance.source).toBe('merge');
     expect(head?.mergeParentId).toBe(aId);
+  });
+
+  // A-3: the field has always been tracked but nothing surfaced it. The History
+  // card now resolves it, so it has to be reachable AND survive a reload.
+  it('resolves the second parent into a real commit via commitById', () => {
+    const rootId = state().headId!;
+    const aId = commit(drumsEdit, 'A');
+    state().rewind(rootId);
+    commit(bassEdit, 'B');
+    state().mergeInto(aId);
+    const head = state().history.find((c) => c.id === state().headId)!;
+    const second = commitById(state().history, head.mergeParentId);
+    expect(second).not.toBeNull();
+    expect(second!.id).toBe(aId);
+    expect(second!.label).toBe('A');
+  });
+
+  it('survives the persist round-trip', () => {
+    vi.useFakeTimers();
+    try {
+      const rootId = state().headId!;
+      const aId = commit(drumsEdit, 'A');
+      state().rewind(rootId);
+      commit(bassEdit, 'B');
+      state().mergeInto(aId);
+      const headId = state().headId!;
+      vi.advanceTimersByTime(500); // let the debounced autosave flush
+      const projectId = state().projectId;
+      const blob = JSON.parse(localStorage.getItem(`refrain.project.${projectId}`)!);
+      const persisted = blob.history.find((c: { id: string }) => c.id === headId);
+      expect(persisted.mergeParentId).toBe(aId);
+
+      // …and back through applyBlob, which is the leg that actually matters:
+      // the History card reads the REHYDRATED commit, not the raw JSON, so a
+      // field that survived the write but got dropped on load would still
+      // leave the second parent invisible after a reload.
+      state().openProject(projectId);
+      const rehydrated = commitById(state().history, headId);
+      expect(rehydrated).not.toBeNull();
+      expect(rehydrated!.mergeParentId).toBe(aId);
+      expect(commitById(state().history, rehydrated!.mergeParentId)!.label).toBe('A');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('commitById is honest about a parent that is no longer in history', () => {
+    expect(commitById(state().history, 'cgone')).toBeNull();
+    expect(commitById(state().history, null)).toBeNull();
+    expect(commitById(state().history, undefined)).toBeNull();
   });
 });
