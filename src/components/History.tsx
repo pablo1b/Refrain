@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../state/store';
 import { Modal } from './Modal';
-import { seedHex } from '../state/store';
+import { seedHex, commitById } from '../state/store';
 import type { Commit, Provenance, ConflictChoice, VoiceChange } from '../types';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
@@ -76,7 +76,16 @@ export function History() {
         {/* provenance card */}
         <div>
           {selected ? (
-            <ProvenanceCard commit={selected} isHead={selected.id === headId} onReproduce={() => reproduceCommit(selected.id)} onFork={() => { forkFrom(selected.id); setSel(selected.id); }} onRewind={() => { rewind(selected.id); setSel(selected.id); }} onMerge={() => mergeInto(selected.id)} />
+            <ProvenanceCard
+              commit={selected}
+              isHead={selected.id === headId}
+              history={history}
+              onSelectCommit={setSel}
+              onReproduce={() => reproduceCommit(selected.id)}
+              onFork={() => { forkFrom(selected.id); setSel(selected.id); }}
+              onRewind={() => { rewind(selected.id); setSel(selected.id); }}
+              onMerge={() => mergeInto(selected.id)}
+            />
           ) : (
             <div style={{ ...mono, fontSize: 12, color: 'var(--text-dim)', padding: 20 }}>Select a commit to see its recipe.</div>
           )}
@@ -139,6 +148,7 @@ function CommitRow({ commit, isHead, isSel, onSelect }: { commit: Commit; isHead
         <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{ fontSize: 12.5, color: commit.parked ? 'var(--text-2)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{commit.label}</span>
           {isHead && <span style={{ ...mono, fontSize: 9, color: 'var(--live)' }}>● now</span>}
+          {commit.mergeParentId && <span title="a merge — two parents (§12.6)" style={{ ...mono, fontSize: 9.5, color: 'var(--maestro)' }}>⑃ merge</span>}
         </span>
         <span style={{ ...mono, fontSize: 9.5, color: 'var(--text-dim)' }}>
           {SOURCE_LABEL[p.source]}
@@ -149,7 +159,7 @@ function CommitRow({ commit, isHead, isSel, onSelect }: { commit: Commit; isHead
   );
 }
 
-function ProvenanceCard({ commit, isHead, onReproduce, onFork, onRewind, onMerge }: { commit: Commit; isHead: boolean; onReproduce: () => void; onFork: () => void; onRewind: () => void; onMerge: () => void }) {
+function ProvenanceCard({ commit, isHead, history, onSelectCommit, onReproduce, onFork, onRewind, onMerge }: { commit: Commit; isHead: boolean; history: Commit[]; onSelectCommit: (id: string) => void; onReproduce: () => void; onFork: () => void; onRewind: () => void; onMerge: () => void }) {
   const p = commit.provenance;
   const reseed = useStore((s) => s.reseed);
   return (
@@ -172,6 +182,23 @@ function ProvenanceCard({ commit, isHead, onReproduce, onFork, onRewind, onMerge
           </Field>
         )}
         <Field label="WHEN">{timeOf(p.when)}{p.cycle != null ? ` · cycle ${p.cycle}` : ''}</Field>
+        {/* both parents, navigable. A merge node has two (spec §12.6) and the
+            second one had no UI at all — the data model tracked a parent a user
+            could never see (B-6). */}
+        {commit.parentId && (
+          <Field label="PARENT">
+            <ParentLink history={history} id={commit.parentId} onSelect={onSelectCommit} />
+          </Field>
+        )}
+        {commit.mergeParentId && (
+          <Field label="2ND PARENT">
+            <span style={{ ...mono, fontSize: 10, color: 'var(--maestro)', marginRight: 7 }}>⑃ merged</span>
+            <ParentLink history={history} id={commit.mergeParentId} onSelect={onSelectCommit} />
+          </Field>
+        )}
+        {!commit.parentId && !commit.mergeParentId && (
+          <Field label="PARENT"><span style={{ color: 'var(--text-3)' }}>root · no parent</span></Field>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 7, padding: '11px 14px', borderTop: '1px solid var(--line)', background: 'var(--bg-deeper)' }}>
         <button onClick={onReproduce} disabled={p.seed == null} style={{ ...mono, fontSize: 10, fontWeight: 700, color: 'var(--live-ink)', background: p.seed == null ? 'var(--line-5)' : 'var(--live)', borderRadius: 5, padding: '5px 11px', opacity: p.seed == null ? 0.5 : 1 }}>reproduce</button>
@@ -272,6 +299,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ ...mono, fontSize: 10, color: 'var(--text-dim)', width: 64, flex: 'none' }}>{label}</span>
       <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', lineHeight: 1.45 }}>{children}</span>
     </div>
+  );
+}
+
+// A navigable parent reference. Labels, not ids — ids are non-deterministic and
+// meaningless to a reader; a pruned parent says so rather than showing a dead id.
+// Selecting only moves the card: time travel stays behind rewind/fork.
+function ParentLink({ history, id, onSelect }: { history: Commit[]; id: string; onSelect: (id: string) => void }) {
+  const parent = commitById(history, id);
+  if (!parent) return <span style={{ color: 'var(--text-3)' }}>no longer in history</span>;
+  return (
+    <button onClick={() => onSelect(parent.id)} title="select this commit" style={{ ...mono, fontSize: 11, color: 'var(--select)', textAlign: 'left' }}>
+      ↑ {parent.label}
+      <span style={{ color: 'var(--text-dim)' }}> · {timeOf(parent.provenance.when)}</span>
+    </button>
   );
 }
 

@@ -19,7 +19,7 @@ import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { parseScore } from '../music/parseScore';
 import { useStore } from '../state/store';
-import { buildMiniRoll } from './miniRoll';
+import { buildMiniRoll, MINI_W } from './miniRoll';
 import type { MiniRollMode } from '../types';
 import type { EngineEvent } from '../audio/strudelEngine';
 
@@ -198,6 +198,9 @@ class MiniMarker extends GutterMarker {
   }
   toDOM() {
     const span = document.createElement('span');
+    span.className = 'cm-minirollMarker';
+    span.dataset.voice = this.v.id;
+    span.dataset.mode = this.v.mode;
     span.style.display = 'inline-flex';
     span.style.alignItems = 'center';
     span.style.padding = '0 4px';
@@ -209,6 +212,44 @@ class MiniMarker extends GutterMarker {
       e.preventDefault();
       e.stopPropagation();
       useStore.getState().cycleMiniRoll(this.v.id);
+    };
+    return span;
+  }
+}
+// The `off` state still needs a TARGET: with no DOM node the roll → spark → off
+// → roll cycle can never close, so `off` was a dead end (B-1). A 4px dim dot —
+// no chart, still clickable — at the same total width as the roll, so the gutter
+// doesn't jump as a voice cycles between modes.
+class OffMarker extends GutterMarker {
+  constructor(private id: string) {
+    super();
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-minirollOff';
+    span.dataset.voice = this.id;
+    span.dataset.mode = 'off';
+    span.setAttribute('role', 'button');
+    span.setAttribute('aria-label', `$${this.id} mini-roll off — click to show`);
+    span.title = `$${this.id} · mini-roll off · click to show`;
+    span.style.display = 'inline-flex';
+    span.style.alignItems = 'center';
+    span.style.justifyContent = 'center';
+    span.style.width = `${MINI_W}px`;
+    span.style.padding = '0 4px';
+    span.style.cursor = 'pointer';
+    const dot = document.createElement('span');
+    dot.style.width = '4px';
+    dot.style.height = '4px';
+    dot.style.borderRadius = '50%';
+    dot.style.background = 'var(--gutter)';
+    dot.style.opacity = '0.55';
+    span.appendChild(dot);
+    span.onmousedown = (e) => e.preventDefault();
+    span.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      useStore.getState().cycleMiniRoll(this.id);
     };
     return span;
   }
@@ -229,11 +270,14 @@ const miniRollGutter = gutter({
     const ms: Range<GutterMarker>[] = [];
     for (const v of d.voices) {
       const mode = d.mode[v.id] ?? 'roll';
-      if (mode === 'off') continue;
       const ln = v.startLine + 1;
       if (ln < 1 || ln > view.state.doc.lines) continue;
       const line = view.state.doc.line(ln);
-      ms.push(new MiniMarker({ id: v.id, color: v.color, expr: v.expr, events: d.events[v.id] ?? [], mode: mode === 'spark' ? 'spark' : 'roll', scoreLens: d.scoreLens }).range(line.from));
+      const marker =
+        mode === 'off'
+          ? new OffMarker(v.id)
+          : new MiniMarker({ id: v.id, color: v.color, expr: v.expr, events: d.events[v.id] ?? [], mode: mode === 'spark' ? 'spark' : 'roll', scoreLens: d.scoreLens });
+      ms.push(marker.range(line.from));
     }
     return RangeSet.of(ms, true);
   },

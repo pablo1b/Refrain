@@ -42,6 +42,7 @@ export function Titlebar() {
   const engineStatus = useStore((s) => s.engineStatus);
   const transportKey = useStore((s) => s.transportKey);
   const midiOn = useStore((s) => s.midiOn);
+  const projectName = useStore((s) => s.projectName);
 
   const genRole = roles.find((r) => r.id === 'generation');
   const genProv = providers.find((p) => p.id === genRole?.provider);
@@ -70,8 +71,9 @@ export function Titlebar() {
       <span style={{ marginLeft: 6, display: 'flex', alignItems: 'center' }}>
         <Logo size={17} live />
       </span>
-      <span style={{ ...mono, fontSize: 12, color: 'var(--text-2)' }}>
-        nightjar / <span style={{ color: 'var(--text)' }}>set—02.refrain</span>
+      {/* the live project — never a literal; matches the Shelf file tree (B-4) */}
+      <span title={`project ${projectName}`} style={{ ...mono, fontSize: 12, color: 'var(--text-2)' }}>
+        {projectName} / <span style={{ color: 'var(--text)' }}>score.strudel</span>
       </span>
 
       {/* transport pill */}

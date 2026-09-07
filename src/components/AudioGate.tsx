@@ -1,4 +1,4 @@
-import { useStore } from '../state/store';
+import { useStore, transportKeyLabel } from '../state/store';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 
@@ -9,6 +9,7 @@ export function AudioGate() {
   const error = useStore((s) => s.engineError);
   const playing = useStore((s) => s.playing);
   const play = useStore((s) => s.play);
+  const transportKey = useStore((s) => s.transportKey);
 
   let content: React.ReactNode = null;
   if (status === 'loading') {
@@ -23,7 +24,7 @@ export function AudioGate() {
   } else if (status === 'ready' && !playing) {
     content = (
       <button onClick={play} style={{ ...mono, fontSize: 11, color: 'var(--live-ink)', background: 'var(--live)', borderRadius: 6, padding: '5px 12px', fontWeight: 700 }}>
-        ▶ press F5 to play
+        ▶ press {transportKeyLabel(transportKey)} to play
       </button>
     );
   } else {

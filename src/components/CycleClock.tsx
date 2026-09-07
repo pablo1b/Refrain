@@ -85,7 +85,14 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
   const onDown = (e: React.PointerEvent) => {
     if (!interactive || !svgRef.current) return;
     e.preventDefault();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    // best-effort: a synthetic or replayed pointer may have no tracked id and
+    // setPointerCapture then throws NotFoundError. The drag is tracked by the
+    // pointermove/pointerup handlers either way (B-10).
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* no active pointer — the drag still works without capture */
+    }
     const f = pointerFraction(svgRef.current, e.clientX, e.clientY);
     setDrag({ start: f });
     setArc({ start: f, end: f });
@@ -117,8 +124,12 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
         onPointerUp={onUp}
         style={{ cursor: interactive ? 'crosshair' : 'default', touchAction: 'none' }}
       >
+        {/* keys are index-composite, never a bare/prefixed `v.id`: two `$bass:`
+            blocks in one score produce two voices with the same id, and then
+            `r${v.id}` collides with a sibling keyed `rbass` — flooding the console
+            with duplicate-key errors on every re-render (B-2). */}
         {voices.map((v, i) => (
-          <circle key={`r${v.id}`} cx={C} cy={C} r={CLOCK_RINGS[i]} stroke="var(--line-2)" strokeWidth={strong ? 1.4 : 1} />
+          <circle key={`ring:${i}:${v.id}`} cx={C} cy={C} r={CLOCK_RINGS[i]} stroke="var(--line-2)" strokeWidth={strong ? 1.4 : 1} />
         ))}
         {[0, 90, 180, 270].map((a) => {
           const rad = (a * Math.PI) / 180;
@@ -152,7 +163,7 @@ export function CycleClock({ size = 118, strong = false, interactive = false }: 
           const list = ticks[v.id] ?? [];
           return list.map((begin, j) => {
             const ang = begin * 2 * Math.PI;
-            return <circle key={`${v.id}-${j}`} cx={C + r * Math.sin(ang)} cy={C - r * Math.cos(ang)} r={strong ? 3.6 : 2.7} fill={v.color} opacity={dimmed ? 0.22 : 1} />;
+            return <circle key={`tick:${i}:${j}`} cx={C + r * Math.sin(ang)} cy={C - r * Math.cos(ang)} r={strong ? 3.6 : 2.7} fill={v.color} opacity={dimmed ? 0.22 : 1} />;
           });
         })}
 

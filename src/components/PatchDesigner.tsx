@@ -11,7 +11,12 @@ function Knob({ label, value, onChange }: { label: string; value: number; onChan
   const onPointerDown = (e: React.PointerEvent) => {
     const startY = e.clientY;
     const startV = value;
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    // best-effort — an untracked pointer id makes this throw (B-10)
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* the window listeners below still track the drag */
+    }
     const move = (ev: PointerEvent) => {
       const dv = (startY - ev.clientY) / 140;
       onChange(Math.max(0, Math.min(1, startV + dv)));

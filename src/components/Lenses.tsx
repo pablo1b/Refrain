@@ -53,8 +53,8 @@ export function TrackerLens() {
     <LensShell title="▤ Tracker" sub="one cycle, linear">
       <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr', height: '100%' }}>
         <div style={{ borderRight: '1px solid var(--line-3)' }}>
-          {voices.map((v) => (
-            <div key={v.id} style={{ height: 18, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', ...mono, fontSize: 8.5, color: 'var(--text-2)' }}>
+          {voices.map((v, i) => (
+            <div key={`lbl:${i}:${v.id}`} style={{ height: 18, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', ...mono, fontSize: 8.5, color: 'var(--text-2)' }}>
               <span style={{ width: 5, height: 5, borderRadius: 1, background: v.color, flex: 'none' }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.id}</span>
             </div>
@@ -62,11 +62,11 @@ export function TrackerLens() {
         </div>
         <div style={{ position: 'relative', background: 'repeating-linear-gradient(to right, transparent, transparent calc(25% - 1px), var(--line-3) calc(25% - 1px), var(--line-3) 25%)' }}>
           <div ref={headRef} style={{ position: 'absolute', top: 0, bottom: 0, width: 2, background: 'var(--live)', left: 0, zIndex: 2, boxShadow: '0 0 6px var(--live)' }} />
-          {voices.map((v) => {
+          {voices.map((v, i) => {
             const evs = events[v.id] ?? [];
             const dimmed = v.muted;
             return (
-              <div key={v.id} style={{ position: 'relative', height: 18, borderBottom: '1px solid var(--line-3)' }}>
+              <div key={`lane:${i}:${v.id}`} style={{ position: 'relative', height: 18, borderBottom: '1px solid var(--line-3)' }}>
                 {evs.map((e, i) => (
                   <div
                     key={i}
@@ -323,11 +323,11 @@ export function ScoreLens() {
         {!anyEngravable && (
           <div style={{ ...mono, fontSize: 10.5, color: 'var(--text-2)', padding: 8 }}>No pitched voice to engrave — the Tracker shows the rhythm.</div>
         )}
-        {systems.map(({ v, eng }) =>
+        {systems.map(({ v, eng }, i) =>
           eng.engravable ? (
-            <ScoreSystem key={v.id} voiceId={v.id} color={v.color} eng={eng} reduced={reduced} onRetune={retune} />
+            <ScoreSystem key={`sys:${i}:${v.id}`} voiceId={v.id} color={v.color} eng={eng} reduced={reduced} onRetune={retune} />
           ) : (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={`sys:${i}:${v.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ ...mono, fontSize: 9, color: v.color, width: 38, flex: 'none' }}>{v.id}</span>
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--bg-deeper)', border: '1px dashed var(--line-5)', borderRadius: 7, padding: '6px 9px' }}>
                 <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>⚠</span>

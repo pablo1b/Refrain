@@ -34,6 +34,17 @@ export interface FakeEngine {
   queryTicks: ReturnType<typeof vi.fn>;
   queryEvents: ReturnType<typeof vi.fn>;
   getAnalyser: ReturnType<typeof vi.fn>;
+  sampleOutput: ReturnType<typeof vi.fn>;
+  /**
+   * Models repl.scheduler.now(): cycles since the transport last started. The
+   * real engine's stop() rewinds the scheduler to 0, so a double-fired
+   * togglePlay() leaves the transport running on a rewound clock — the on-screen
+   * cycle counter jumps back. Without a clock here that symptom is invisible to
+   * tiers 1-2 and only a call-count test is possible (B-5).
+   */
+  __cycle: number;
+  /** Advance the fake scheduler clock by n cycles. */
+  __advance: (n: number) => void;
   /** Restore pristine state + default spy behaviour. Call in beforeEach. */
   __reset: () => void;
 }
@@ -55,6 +66,9 @@ export function createFakeEngine(): FakeEngine {
     queryTicks: vi.fn(),
     queryEvents: vi.fn(),
     getAnalyser: vi.fn(),
+    sampleOutput: vi.fn(),
+    __cycle: 0,
+    __advance: () => {},
     __reset: () => {},
   } as FakeEngine;
 
@@ -67,18 +81,28 @@ export function createFakeEngine(): FakeEngine {
       e.onStatus?.('ready', null);
       return true;
     });
-    e.evaluate.mockResolvedValue({ ok: true });
+    // evaluate(code, autoplay) starts the scheduler, like the real repl
+    e.evaluate.mockImplementation(async () => {
+      e.started = true;
+      return { ok: true };
+    });
+    // repl.stop() REWINDS the scheduler to 0 — the cycle counter resets with it
     e.stop.mockImplementation(() => {
       e.started = false;
+      e.__cycle = 0;
     });
     e.panic.mockResolvedValue(undefined);
     e.setCps.mockImplementation((c: number) => {
       e.cps = c;
     });
-    e.now.mockReturnValue(0);
+    e.now.mockImplementation(() => e.__cycle);
     e.queryTicks.mockResolvedValue([]);
     e.queryEvents.mockResolvedValue([]);
     e.getAnalyser.mockReturnValue(null);
+    e.sampleOutput.mockReturnValue(null);
+    e.__advance = (n: number) => {
+      e.__cycle += n;
+    };
   }
   applyDefaults();
 
@@ -89,6 +113,7 @@ export function createFakeEngine(): FakeEngine {
     e.started = false;
     e.cps = 0.5;
     e.onStatus = null;
+    e.__cycle = 0;
     e.init.mockReset();
     e.evaluate.mockReset();
     e.stop.mockReset();
@@ -98,6 +123,7 @@ export function createFakeEngine(): FakeEngine {
     e.queryTicks.mockReset();
     e.queryEvents.mockReset();
     e.getAnalyser.mockReset();
+    e.sampleOutput.mockReset();
     applyDefaults();
   };
 

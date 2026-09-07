@@ -79,12 +79,12 @@ export function Stage() {
         <div style={{ flex: on('tracker') || on('spectrum') || on('wheel') || on('bloom') || on('score') ? '0 0 300px' : 1, minWidth: 0, padding: '10px 14px', overflowY: 'auto', borderRight: '1px solid var(--line-3)' }}>
           <div style={{ ...mono, fontSize: 10, letterSpacing: '.14em', color: 'var(--text-dim)', marginBottom: 8 }}>THE STAGE — {voices.length} VOICES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {voices.map((v) => {
+            {voices.map((v, i) => {
               const dimmed = v.muted || (anySolo && !v.solo);
               const level = dimmed ? 0 : (levels[v.id] ?? 0);
               return (
                 <VoiceRow
-                  key={v.id}
+                  key={`mix:${i}:${v.id}`}
                   sigil={v.sigil}
                   color={v.color}
                   level={level}

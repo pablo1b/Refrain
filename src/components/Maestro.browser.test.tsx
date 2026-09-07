@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Maestro } from './Maestro';
 import { resetStore, state } from '../../tests/helpers/store';
+import { useStore } from '../state/store';
 
 // ---------------------------------------------------------------------------
 // Browser tier (real Chromium via Playwright). Maestro is the chat surface that
@@ -91,5 +92,59 @@ describe('Maestro (chat surface, real browser)', () => {
 
     await waitFor(() => expect(state().stagedEdit).not.toBeNull());
     expect(state().playing).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B-8: reasoning folds PER MESSAGE. One shared boolean meant expanding one
+// trace expanded every message at once — the stated A18.3 fail signal. Messages
+// are seeded straight into the store so no LLM is involved. The literal ids here
+// are fixtures we authored; we never assert on a *generated* id.
+// ---------------------------------------------------------------------------
+describe('reasoning fold (per message)', () => {
+  const seed = () =>
+    act(() => {
+      useStore.setState((s) => ({
+        messages: [
+          ...s.messages,
+          { id: 'm-a', role: 'maestro' as const, text: 'first', reasoning: 'REASON-A' },
+          { id: 'm-b', role: 'maestro' as const, text: 'second', reasoning: 'REASON-B' },
+        ],
+      }));
+    });
+
+  it('folding one message leaves the other expanded', async () => {
+    render(<Maestro />);
+    seed();
+    expect(screen.getByText('REASON-A')).toBeTruthy();
+    expect(screen.getByText('REASON-B')).toBeTruthy();
+
+    const toggles = screen.getAllByText('reasoning');
+    await act(async () => {
+      (toggles[0].closest('button') as HTMLButtonElement).click();
+    });
+
+    expect(screen.queryByText('REASON-A')).toBeNull();
+    expect(screen.getByText('REASON-B')).toBeTruthy();
+  });
+
+  it('⌥R still folds every trace at once', async () => {
+    render(<Maestro />);
+    seed();
+    // put the two into different states first
+    const toggles = screen.getAllByText('reasoning');
+    await act(async () => {
+      (toggles[0].closest('button') as HTMLButtonElement).click();
+    });
+    expect(screen.queryByText('REASON-A')).toBeNull();
+    expect(screen.getByText('REASON-B')).toBeTruthy();
+
+    // ⌥R drops per-message overrides so "all" really means all
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', altKey: true, bubbles: true }));
+    });
+    const aOpen = screen.queryByText('REASON-A') !== null;
+    const bOpen = screen.queryByText('REASON-B') !== null;
+    expect(aOpen).toBe(bOpen);
   });
 });

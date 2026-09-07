@@ -75,12 +75,12 @@ function Outline() {
     <>
       <Heading>VOICES — {voices.length}</Heading>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, ...mono, fontSize: 12 }}>
-        {voices.map((v) => {
+        {voices.map((v, i) => {
           const isActive = v.id === active;
           const dimmed = v.muted || (anySolo && !v.solo);
           return (
             <div
-              key={v.id}
+              key={`voice:${i}:${v.id}`}
               onClick={() => select(v.id)}
               style={{
                 display: 'flex',
