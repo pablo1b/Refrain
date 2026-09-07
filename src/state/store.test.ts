@@ -208,7 +208,23 @@ describe('hush', () => {
     expect(state().playing).toBe(false);
     expect(state().transportLive).toBe(true);
     const sent = (engine.evaluate as any).mock.calls.at(-1)?.[0] as string;
-    expect(sent).toContain('.gain(saw.range(1, 0).slow(1))'); // a real fade, not `silence`
+    expect(sent).toContain('.postgain(saw.range(1, 0).slow(1))'); // a real fade, not `silence`
+  });
+
+  // Strudel controls REPLACE rather than compose: `.gain(0.2).gain(0.8)` queries as
+  // 0.8. So a `gain` ramp would discard every authored level and the quietest voices
+  // would jump UP at the start of the fade ($tex: 0.08 → 1.0). The ramp must ride on
+  // `postgain`, which survives alongside `gain`.
+  it('fades without destroying the authored mix balance', async () => {
+    await state().play();
+    (engine.evaluate as any).mockClear();
+    await state().hush();
+    const sent = (engine.evaluate as any).mock.calls.at(-1)?.[0] as string;
+    // every authored gain in the seeded score is still there, untouched
+    expect(sent).toContain('.gain("0.4 0.7")'); // $hats — a patterned level
+    expect(sent).toContain('.gain(0.5)'); // $pad
+    // and the ramp never rides on `gain`, which would clobber those
+    expect(sent).not.toContain('.gain(saw.range(1, 0)');
   });
 
   it('falls back to an instant silence when nothing is sounding', async () => {

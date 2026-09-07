@@ -356,16 +356,26 @@ function buildVoices(score: string, vstate: Record<string, VState>): Voice[] {
 }
 
 /**
- * HUSH transform: append a one-cycle gain ramp (`.gain(saw.range(1,0).slow(1))`)
+ * HUSH transform: append a one-cycle falling ramp (`.postgain(saw.range(1,0).slow(1))`)
  * to every sounding voice so the mix fades out over a cycle rather than cutting.
  * `saw` runs 0→1, so range(1,0) is a falling ramp — a real, honest fade (spec §10).
+ *
+ * It must be `postgain`, NOT `gain`. Strudel controls do not compose: a second
+ * `.gain()` REPLACES the first (measured — `.gain(0.2).gain(0.8)` queries as 0.8,
+ * not 0.16), so ramping `gain` would throw away every voice's authored level. The
+ * quiet voices got LOUDER at the start of the "fade": nightjar's `$tex` runs
+ * `.gain(perlin.range(0.08,0.4))` and the ramp replaced 0.08 with 1.0, and `$stab`
+ * (authored `.gain(0.45)`) measured 1.48× its authored peak after HUSH. `postgain`
+ * is a separate control that survives alongside `gain` (`{gain:0.4, postgain:0.25}`),
+ * is linear rather than exponential, and applies after all FX — so it attenuates the
+ * reverb tail too, which is what "land on silence" needs.
  */
 function fadeOutScore(score: string): string {
   const { voices } = parseScore(score);
   const lines = score.split('\n');
   for (const v of [...voices].reverse()) {
     if (v.expr.trim() === 'silence') continue;
-    lines.splice(v.endLine + 1, 0, `${v.indent}.gain(saw.range(1, 0).slow(1))`);
+    lines.splice(v.endLine + 1, 0, `${v.indent}.postgain(saw.range(1, 0).slow(1))`);
   }
   return lines.join('\n');
 }
