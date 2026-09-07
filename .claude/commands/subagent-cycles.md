@@ -1,0 +1,1 @@
+Use subagents strategically, each phase having a design|implement|gate|reivew|commit, with independent agents. When all are done, run an operator subagent task to manually verify changes work as expected. Iterate if needed. When all are green, create a PR.
