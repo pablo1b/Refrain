@@ -42,7 +42,13 @@ export interface Provenance {
   source: ProvenanceSource;
   prompt?: string; // the natural-language ask, if any
   directive?: string; // the /verb, if any
-  model?: string; // display label, e.g. "Claude Sonnet"
+  /**
+   * Display label, e.g. "Claude Sonnet". Present ONLY when an LLM call actually
+   * produced this change — a deterministic transform must never name a model it
+   * never called (A-1). Absent for 'you' | 'directive' | 'lanes' | 'agent' |
+   * 'merge' | 'init'.
+   */
+  model?: string;
   thinking?: boolean; // resolved: did this turn spend the reasoning tier?
   effort?: MaestroEffort; // the per-turn effort override in force (spec §12.4)
   seed?: number; // visible generation seed (rendered hex, e.g. 0x4F2A)
@@ -157,6 +163,12 @@ export interface Lane {
   voiceId: string; // injected as a new voice
   code: string; // full `$name: ...` to add to the score
   shape: LaneShape;
+  /**
+   * The integer key that produced `code` (A-6). Refine walks this forward so a
+   * refined lane can never land on a sibling that is already on screen. Absent
+   * for hand-built lanes (a merge's "their take"), which carry no template key.
+   */
+  variantKey?: number;
 }
 export interface LaneSet {
   id: string;
@@ -173,6 +185,12 @@ export interface Scene {
   name: string;
   /** voiceId -> intensity 0..1 (0 = silent in this scene) */
   levels: Record<string, number>;
+  /**
+   * The recipe behind the capture. Every scene created from v0.2.x onward has
+   * one (A-2); it stays optional because scenes persisted by earlier builds may
+   * not, and a reader must be told "not recorded" rather than shown a
+   * fabricated timestamp.
+   */
   provenance?: Provenance;
 }
 

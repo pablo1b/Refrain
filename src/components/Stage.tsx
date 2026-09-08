@@ -32,7 +32,7 @@ export function Stage() {
   const toggleSolo = useStore((s) => s.toggleSolo);
   const toggleMute = useStore((s) => s.toggleMute);
   const anySolo = voices.some((v) => v.solo);
-  const { levels, cpu, headroomDb } = useMeters();
+  const { levels, measured, cpu, headroomDb } = useMeters();
 
   const on = (id: LensId) => lenses.includes(id);
 
@@ -79,15 +79,16 @@ export function Stage() {
         <div style={{ flex: on('tracker') || on('spectrum') || on('wheel') || on('bloom') || on('score') ? '0 0 300px' : 1, minWidth: 0, padding: '10px 14px', overflowY: 'auto', borderRight: '1px solid var(--line-3)' }}>
           <div style={{ ...mono, fontSize: 10, letterSpacing: '.14em', color: 'var(--text-dim)', marginBottom: 8 }}>THE STAGE — {voices.length} VOICES</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {voices.map((v) => {
+            {voices.map((v, i) => {
               const dimmed = v.muted || (anySolo && !v.solo);
               const level = dimmed ? 0 : (levels[v.id] ?? 0);
               return (
                 <VoiceRow
-                  key={v.id}
+                  key={`mix:${i}:${v.id}`}
                   sigil={v.sigil}
                   color={v.color}
                   level={level}
+                  measured={!!measured[v.id]}
                   showMeter={on('meters')}
                   showSpark={on('sparklines')}
                   solo={v.solo}
@@ -115,8 +116,8 @@ export function Stage() {
   );
 }
 
-function VoiceRow({ sigil, color, level, showMeter, showSpark, solo, muted, onSolo, onMute }: {
-  sigil: string; color: string; level: number; showMeter: boolean; showSpark: boolean; solo: boolean; muted: boolean; onSolo: () => void; onMute: () => void;
+function VoiceRow({ sigil, color, level, measured, showMeter, showSpark, solo, muted, onSolo, onMute }: {
+  sigil: string; color: string; level: number; measured: boolean; showMeter: boolean; showSpark: boolean; solo: boolean; muted: boolean; onSolo: () => void; onMute: () => void;
 }) {
   const hist = useRef<number[]>([]);
   hist.current = [...hist.current.slice(-31), level];
@@ -126,7 +127,7 @@ function VoiceRow({ sigil, color, level, showMeter, showSpark, solo, muted, onSo
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, ...mono, fontSize: 11 }}>
       <span style={{ width: 52, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', flex: 'none' }}>{sigil}</span>
       {showMeter && (
-        <div role="meter" aria-label={`${sigil} level`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ flex: showSpark ? '0 0 60px' : 1, height: 5, borderRadius: 3, background: 'var(--elev)', overflow: 'hidden' }}>
+        <div role="meter" aria-label={`${sigil} ${measured ? 'level' : 'activity'}`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} style={{ flex: showSpark ? '0 0 60px' : 1, height: 5, borderRadius: 3, background: 'var(--elev)', overflow: 'hidden' }}>
           <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width .06s linear' }} />
         </div>
       )}

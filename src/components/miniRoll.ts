@@ -13,7 +13,10 @@ import type { EngineEvent } from '../audio/strudelEngine';
 import { analyzeVoiceForScore } from '../music/notation';
 
 const NS = 'http://www.w3.org/2000/svg';
-const W = 92;
+/** Mini-roll width. Exported so the gutter's `off` affordance can match it and
+ *  the gutter never changes width as a voice cycles modes (B-1). */
+export const MINI_W = 92;
+const W = MINI_W;
 const H = 14;
 
 function svgEl(): SVGSVGElement {

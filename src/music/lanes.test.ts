@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLanes } from './lanes';
+import { buildLanes, laneBody, laneDraft, refineLaneDraft, fmtNum } from './lanes';
 
 // Pure-logic tier: no mocks, no DOM. buildLanes is a deterministic template
 // picker. Lane.id is Date.now-based, so we only ever assert on shape/content
@@ -118,5 +118,162 @@ describe('buildLanes', () => {
     }
     const ids = lanes.map((l) => l.voiceId);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-11 — generated numbers are formatted at emission. The seed-0 literals above
+// are provably unaffected (they interpolate integers only); the two cases below
+// are the DELIBERATE re-baseline for the float sites that used to leak IEEE
+// noise into the committed score.
+// ---------------------------------------------------------------------------
+describe('fmtNum (A-11)', () => {
+  it.each([
+    [0.2 + 0.1, '0.3'],
+    [1.4 + 0.4, '1.8'],
+    [6000, '6000'],
+    [2, '2'],
+    [-0.5, '-0.5'],
+    [0.30000000000000004, '0.3'],
+  ])('formats %s as %s', (input, expected) => {
+    expect(fmtNum(input as number)).toBe(expected);
+  });
+});
+
+describe('generated numbers carry no float noise (A-11)', () => {
+  it('emits .room(0.3), not .room(0.30000000000000004)', () => {
+    // seed 7 → lane A takes the "chord stab" template at variant 1
+    const lanes = buildLanes(GEN_PROMPT, [], 7);
+    expect(lanes[0].code).toBe(
+      '$stab: chord("<Cm7 Fm9>").voicing().s("sawtooth").struct("t ~ t ~").room(0.3)',
+    );
+  });
+
+  it('emits .distort("1.8:0.4"), not 1.7999999999999998', () => {
+    const lanes = buildLanes(DROP_PROMPT, [], 7);
+    expect(lanes[0].code).toBe('$st: note("c2").s("sawtooth").struct("t ~ ~ ~").distort("1.8:0.4")');
+  });
+
+  it('never emits a long float tail for any seed or prompt', () => {
+    for (const prompt of [GEN_PROMPT, DROP_PROMPT, '4 ways into the drop']) {
+      for (let seed = 0; seed < 24; seed++) {
+        for (const l of buildLanes(prompt, [], seed)) {
+          expect(l.code).not.toMatch(/\d\.\d{7,}/);
+        }
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A lane exists to be AUDITIONED — you solo it against the mix. The "chord
+// stab" archetype emitted `note("<Cm7 Fm9>")`, which renders silence (the note
+// value is the literal string "Cm7"), so a quarter of the pool could never be
+// heard. Chord symbols must go through `.voicing()`.
+// ---------------------------------------------------------------------------
+describe('every generated lane can actually sound', () => {
+  it('never puts a chord symbol inside note(), for any seed or prompt', () => {
+    for (const prompt of [GEN_PROMPT, DROP_PROMPT, '4 ways into the drop']) {
+      for (let seed = 0; seed < 24; seed++) {
+        for (const l of buildLanes(prompt, [], seed)) {
+          expect(l.code).not.toMatch(/note\(\s*"<?[A-G][#b]?(m|maj|min|M|\^|dim|aug|sus|add|alt|[0-9])/);
+        }
+      }
+    }
+  });
+
+  it('voices the chord-stab archetype through chord().voicing()', () => {
+    const stab = buildLanes(GEN_PROMPT, [], 7)[0].code;
+    expect(stab).toContain('chord("<Cm7 Fm9>").voicing()');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-6 — a lane's body is identified by ONE integer key, so refine can search
+// deterministically for content that is not already on screen.
+// ---------------------------------------------------------------------------
+describe('laneBody', () => {
+  it('strips the $voice: prefix', () => {
+    expect(laneBody('$x: s("bd")')).toBe('s("bd")');
+  });
+
+  it('tolerates leading whitespace and extra spacing', () => {
+    expect(laneBody('   $my_voice:   s("bd")')).toBe('s("bd")');
+  });
+
+  it('leaves a bare expression alone', () => {
+    expect(laneBody('s("bd")')).toBe('s("bd")');
+  });
+});
+
+describe('laneDraft / variantKey (A-6)', () => {
+  it('gives lane i the key seed+i', () => {
+    const lanes = buildLanes(GEN_PROMPT, [], 0x4f2a);
+    expect(lanes.map((l) => l.variantKey)).toEqual([0x4f2a, 0x4f2b, 0x4f2c]);
+  });
+
+  it('is 12-periodic — the collision law', () => {
+    for (const k of [0, 1, 5, 7, 0xe824]) {
+      expect(laneDraft(GEN_PROMPT, k).body).toBe(laneDraft(GEN_PROMPT, k + 12).body);
+      expect(laneDraft(DROP_PROMPT, k).body).toBe(laneDraft(DROP_PROMPT, k + 12).body);
+    }
+  });
+
+  it('produces 10 distinct bodies across one period', () => {
+    // 4 templates x 3 variants = 12 keys, but two templates ignore the variant
+    // ("silence → hit", "shaker texture"), so their three keys collapse to one
+    // body each: 3 + 3 + 1 + 3 = 10. Still far more than the 4 lanes that can be
+    // on screen at once, which is what makes the refine search always succeed.
+    const bodies = new Set(Array.from({ length: 12 }, (_, k) => laneDraft(GEN_PROMPT, k).body));
+    expect(bodies.size).toBe(10);
+    expect(bodies.size).toBeGreaterThan(4);
+  });
+
+  it('has more distinct bodies than the maximum lanes on screen, for both pools', () => {
+    for (const prompt of [GEN_PROMPT, DROP_PROMPT]) {
+      const bodies = new Set(Array.from({ length: 12 }, (_, k) => laneDraft(prompt, k).body));
+      expect(bodies.size).toBeGreaterThan(4);
+    }
+  });
+
+  it('matches what buildLanes emits for the same key', () => {
+    const lanes = buildLanes(GEN_PROMPT, [], 7);
+    expect(laneBody(lanes[0].code)).toBe(laneDraft(GEN_PROMPT, 7).body);
+  });
+
+  it('is stable for a negative key', () => {
+    expect(() => laneDraft(GEN_PROMPT, -5)).not.toThrow();
+    expect(laneDraft(GEN_PROMPT, -5).body).toBe(laneDraft(GEN_PROMPT, 7).body);
+  });
+});
+
+describe('refineLaneDraft (A-6)', () => {
+  it('returns a body that is not in the avoid list', () => {
+    const avoid = buildLanes(GEN_PROMPT, [], 0).map((l) => laneBody(l.code));
+    const draft = refineLaneDraft(GEN_PROMPT, 1, avoid);
+    expect(avoid).not.toContain(draft.body);
+  });
+
+  it('is deterministic across two identical calls', () => {
+    const avoid = buildLanes(GEN_PROMPT, [], 0).map((l) => laneBody(l.code));
+    expect(refineLaneDraft(GEN_PROMPT, 1, avoid).body).toBe(refineLaneDraft(GEN_PROMPT, 1, avoid).body);
+  });
+
+  it('advances the key rather than standing still', () => {
+    const avoid = [laneDraft(GEN_PROMPT, 3).body];
+    expect(refineLaneDraft(GEN_PROMPT, 3, avoid).variantKey).toBeGreaterThan(3);
+  });
+
+  it('returns the fromKey draft when nothing is avoided', () => {
+    expect(refineLaneDraft(GEN_PROMPT, 5, []).variantKey).toBe(5);
+  });
+
+  it('never reproduces a visible sibling for the reported seed 0xE824', () => {
+    // The exact regression: refining lane A used to regenerate with seed+idx+1
+    // and then take index idx, which for idx=0 is always sibling B's key.
+    const lanes = buildLanes(GEN_PROMPT, [], 0xe824);
+    const bodies = lanes.map((l) => laneBody(l.code));
+    const refined = refineLaneDraft(GEN_PROMPT, (lanes[0].variantKey ?? 0) + 1, bodies);
+    expect(bodies).not.toContain(refined.body);
   });
 });

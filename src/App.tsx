@@ -77,6 +77,18 @@ export default function App() {
       const s = useStore.getState();
       const editable = isEditable(e.target);
 
+      // Performance mode owns Esc (exit live); App owns everything else,
+      // including the ONE transport binding (B-5: never two owners). Both halves
+      // of this guard are load-bearing because window listeners fire in
+      // REGISTRATION order and either order is reachable (RT-1):
+      //   • booting straight into live — the child's effect registers first, so
+      //     PerformanceMode has already preventDefault()ed *and* flipped mode to
+      //     'studio' by the time this runs; only `defaultPrevented` still says so.
+      //   • clicking `◰ live` at runtime — App registered first, so this runs
+      //     while nothing is prevented yet; only `mode` still says live.
+      // Missing the second case cleared the user's pins/arc on the way out.
+      if (e.key === 'Escape' && (e.defaultPrevented || s.mode === 'performance')) return;
+
       // transport play/pause — the ACTIVE binding (spec §12.3). Browser tier
       // defaults to ⌘⇧⏎ (never browser-reserved); F5 is an opt-in alias. Works
       // even while typing.

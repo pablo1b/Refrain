@@ -24,7 +24,16 @@ export function Maestro() {
 
   const [input, setInput] = useState('');
   const [hi, setHi] = useState(0);
-  const [reasoningOpen, setReasoningOpen] = useState(true); // one shared fold state (⌥R)
+  // Reasoning folds PER MESSAGE (B-8): one shared boolean meant expanding one
+  // trace expanded every message at once. `foldAll` is the default every message
+  // inherits; `foldOne` holds per-message overrides keyed by message id. ⌥R still
+  // folds everything at once — it flips the default AND drops the overrides, so
+  // "all" really means all.
+  const [foldAll, setFoldAll] = useState(true);
+  const [foldOne, setFoldOne] = useState<Record<string, boolean>>({});
+  const reasoningOpen = (mid: string) => foldOne[mid] ?? foldAll;
+  const toggleReasoning = (mid: string) =>
+    setFoldOne((prev) => ({ ...prev, [mid]: !(prev[mid] ?? foldAll) }));
   const taRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -55,10 +64,13 @@ export function Maestro() {
 
   useEffect(() => setHi(0), [query, atQuery]);
 
-  // ⌥R folds every reasoning trace at once — ONE listener, shared state (spec §03)
+  // ⌥R folds every reasoning trace at once — ONE listener (spec §03)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey && e.key.toLowerCase() === 'r') setReasoningOpen((v) => !v);
+      if (e.altKey && e.key.toLowerCase() === 'r') {
+        setFoldAll((v) => !v);
+        setFoldOne({}); // ⌥R overrides every per-message choice
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -108,7 +120,7 @@ export function Maestro() {
 
       <div ref={scrollRef} style={{ flex: 1, padding: 14, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
         {messages.map((m) => (
-          <MessageView key={m.id} m={m} reasoningOpen={reasoningOpen} onToggleReasoning={() => setReasoningOpen((v) => !v)} />
+          <MessageView key={m.id} m={m} reasoningOpen={reasoningOpen(m.id)} onToggleReasoning={() => toggleReasoning(m.id)} />
         ))}
         {busy && (
           <div style={{ ...mono, fontSize: 11, color: 'var(--maestro)', display: 'flex', alignItems: 'center', gap: 7 }}>

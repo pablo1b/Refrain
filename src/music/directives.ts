@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ParsedScore, ParsedVoice } from './parseScore';
+import type { CustomDirective } from '../types';
 
 export type DirectiveGroup = 'DYNAMICS' | 'AGOGICS' | 'ARTICULATION' | 'CHARACTER' | 'GESTURE';
 
@@ -126,7 +127,9 @@ export function applyDirective(
   voice: ParsedVoice | undefined,
   degree?: number,
 ): DirectiveResult | { error: string } {
-  const d = DIRECTIVE_BY_ID[id];
+  // Object.hasOwn, not a bare index: DIRECTIVE_BY_ID['toString'] would otherwise
+  // resolve a prototype method and fall through to the switch default (A-5/A21).
+  const d = Object.hasOwn(DIRECTIVE_BY_ID, id) ? DIRECTIVE_BY_ID[id] : undefined;
   if (!d) return { error: `Unknown directive “${id}”.` };
 
   // Global tempo directives don't need a voice.
@@ -266,12 +269,24 @@ export type Intent =
   | { kind: 'command'; id: string; prompt: string; voiceHint?: string }
   | { kind: 'lanes'; prompt: string }
   | { kind: 'answer'; question: string }
+  /** A slash token that is not a real verb — say so, never ask an LLM (A-7). */
+  | { kind: 'unknown-command'; token: string; text: string }
   | { kind: 'unknown'; text: string };
+
+/**
+ * Normalise a voice hint to a bare id: `$drums` → `drums`. Voice ids never carry
+ * the sigil (parseScore sets id="drums", sigil="$drums"), so an un-normalised
+ * hint silently misses and the directive mis-targets another voice (A-10).
+ */
+export function normalizeVoiceHint(hint?: string): string | undefined {
+  const h = hint?.trim().replace(/^\$+/, '');
+  return h ? h : undefined;
+}
 
 const GEN_RE = /\b(ways?|variations?|options?|ideas?|forks?|lanes?|give me|generate|come up with|suggest)\b/i;
 const ASK_RE = /^(what|why|how|explain|does|do |tell me|describe|which)\b/i;
 
-export function interpret(text: string, voiceIds: string[]): Intent {
+export function interpret(text: string, voiceIds: string[], custom: CustomDirective[] = []): Intent {
   const raw = text.trim();
   const t = raw.toLowerCase();
 
@@ -282,14 +297,18 @@ export function interpret(text: string, voiceIds: string[]): Intent {
     let voiceHint: string | undefined;
     let degree: number | undefined;
     for (const p of parts.slice(1)) {
-      if (p.startsWith('$')) voiceHint = p.slice(1);
-      else if (voiceIds.includes(p)) voiceHint = p;
+      if (p.startsWith('$')) voiceHint = normalizeVoiceHint(p);
+      else if (voiceIds.some((v) => v === p || v.toLowerCase() === p.toLowerCase())) voiceHint = p;
       else if (/^\d+(\.\d+)?$/.test(p)) degree = parseFloat(p);
     }
     if (Object.hasOwn(COMMAND_BY_ID, token)) return { kind: 'command', id: token, prompt: raw, voiceHint };
     const id = resolveDirectiveId(parts[0]);
     if (id) return { kind: 'directive', id, voiceHint, degree };
-    return { kind: 'unknown', text: raw };
+    // built-ins first, THEN the user's pack: a forged verb must never shadow the
+    // documented vocabulary (A-5).
+    const c = findCustom(token, custom);
+    if (c) return { kind: 'directive', id: c.id, voiceHint, degree };
+    return { kind: 'unknown-command', token: token ?? '', text: raw };
   }
 
   // question
@@ -309,12 +328,109 @@ export function interpret(text: string, voiceIds: string[]): Intent {
       if (t.includes(a)) matches.push({ id: d.id, len: a.length });
     }
   }
+  // ONE precedence rule, on both the slash path and here: built-ins win, and the
+  // user's pack only races among itself. Length-sorting a single merged pool used
+  // to let a longer forged alias ("make it darker") outrank a built-in ("darker"),
+  // which quietly falsified the "never shadow the documented vocabulary" guarantee
+  // (A-5/D18). Matching is deliberately ASYMMETRIC too: built-in aliases are
+  // curated so a substring test is safe, while user aliases are arbitrary and get
+  // word-boundary + a 3-char floor — otherwise an alias "on" matches "phone", and
+  // a one-word verb silently captures every free-text turn that reaches here.
+  if (!matches.length) {
+    for (const c of custom) {
+      for (const a of customAliases(c)) {
+        if (aliasHit(t, a)) matches.push({ id: c.id, len: a.length });
+      }
+    }
+  }
   if (matches.length) {
     matches.sort((a, b) => b.len - a.len);
     return { kind: 'directive', id: matches[0].id, voiceHint, degree };
   }
 
   return { kind: 'unknown', text: raw };
+}
+
+/** Shortest user alias that may match free-text prose (D19). Below this a verb
+ *  would capture nearly every turn that reaches the alias branch. Explicit
+ *  `/slash` invocation is unaffected — that is a deliberate, exact call. */
+export const MIN_CUSTOM_ALIAS = 3;
+
+/** The prose-matchable aliases of a forged verb: its label plus its aliases,
+ *  lowercased, with anything under MIN_CUSTOM_ALIAS dropped. */
+export function customAliases(c: CustomDirective): string[] {
+  return [c.label.toLowerCase(), ...c.aliases.map((x) => x.toLowerCase())].filter((a) => a.length >= MIN_CUSTOM_ALIAS);
+}
+
+/** Aliases of a forged verb that are too short to match prose (D19/D20) — used
+ *  to warn the user rather than let the verb go silently inert. */
+export function shortCustomAliases(c: CustomDirective): string[] {
+  return [c.label, ...c.aliases].filter((a) => a.trim().length > 0 && a.trim().length < MIN_CUSTOM_ALIAS);
+}
+
+/** Word-boundary containment, so a user alias "on" cannot match "phone". */
+function aliasHit(text: string, alias: string): boolean {
+  const esc = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i').test(text);
+}
+
+/** A forged verb by id, label or alias. Arrays only — no prototype surface. */
+function findCustom(token: string | undefined, custom: CustomDirective[]): CustomDirective | null {
+  if (!token) return null;
+  const tok = token.toLowerCase();
+  return (
+    custom.find(
+      (d) => d.id.toLowerCase() === tok || d.label.toLowerCase() === tok || d.aliases.some((a) => a.toLowerCase() === tok),
+    ) ?? null
+  );
+}
+
+/**
+ * The nearest real verbs to an unrecognised token — deterministic palette
+ * guidance, never an LLM call (A-7). Prefix beats substring; ids, labels and
+ * aliases all count. Iterates arrays only, so a prototype key finds nothing.
+ */
+export function suggestDirectives(token: string, custom: CustomDirective[] = [], limit = 3): string[] {
+  const tok = token.trim().toLowerCase();
+  if (!tok) return [];
+  const prefix: string[] = [];
+  const infix: string[] = [];
+  const typo: string[] = [];
+  const consider = (label: string, keys: string[]) => {
+    for (const k of keys) {
+      if (!k) continue;
+      if (k.startsWith(tok)) return prefix.push(label);
+      if (k.includes(tok) || tok.includes(k)) return infix.push(label);
+      // a single typo is the common case ("/darkr" for "/darker"), and a message
+      // that says "did you mean" should actually be able to answer it
+      if (tok.length >= 4 && withinOneEdit(tok, k)) return typo.push(label);
+    }
+  };
+  for (const d of DIRECTIVES) consider(d.label, [d.id.toLowerCase(), d.label.toLowerCase(), ...d.aliases.map((a) => a.toLowerCase())]);
+  for (const c of COMMANDS) consider(`/${c.id}`, [c.id.toLowerCase()]);
+  for (const c of custom) consider(c.label, [c.id.toLowerCase(), c.label.toLowerCase(), ...c.aliases.map((a) => a.toLowerCase())]);
+  return [...new Set([...prefix, ...infix, ...typo])].slice(0, limit);
+}
+
+/** True when a and b differ by at most one insert, delete or substitution. */
+function withinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  let i = 0;
+  let j = 0;
+  let slack = 1;
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    if (!slack--) return false;
+    if (short.length === long.length) i++; // substitution
+    j++; // insertion in `long`
+  }
+  return true;
 }
 
 function resolveDirectiveId(token: string): string | null {
