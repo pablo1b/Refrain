@@ -1,6 +1,6 @@
 import { useStore } from '../state/store';
 import { Modal } from './Modal';
-import { MODEL_OPTIONS } from '../llm/providers';
+import { MODEL_OPTIONS, modelBadge, ROLE_RECOMMENDATION } from '../llm/providers';
 import type { Provider, RoleRoute } from '../types';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
@@ -74,9 +74,17 @@ function RoleRow({
   onChange: (id: RoleRoute['id'], provider: Provider['id'], model: string) => void;
 }) {
   const tint = role.strength === 'fast' ? 'var(--c-voice)' : role.strength === 'local' ? 'var(--text-2)' : 'var(--maestro)';
+  const badge = modelBadge(role.model);
+  const rec = ROLE_RECOMMENDATION[role.id];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderTop: first ? 'none' : '1px solid var(--line-3)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 16px', borderTop: first ? 'none' : '1px solid var(--line-3)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ fontSize: 13, color: 'var(--text)', flex: 1, minWidth: 0 }}>{role.label}</span>
+      {/* cost squares + latency — legible routing (spec §09) */}
+      <span title={`cost ${badge.cost}/3`} style={{ ...selectStyleMeta, color: badge.cost >= 3 ? 'var(--maestro)' : 'var(--c-voice)' }}>
+        {badge.cost === 0 ? 'free' : '■'.repeat(badge.cost) + '□'.repeat(3 - badge.cost)}
+      </span>
+      <span style={{ ...selectStyleMeta, color: 'var(--text-2)', minWidth: 52, textAlign: 'right' }}>{badge.latency}</span>
       <span title={role.strength} style={{ width: 6, height: 6, borderRadius: '50%', background: tint, flex: 'none' }} />
       <select
         aria-label={`${role.label} provider`}
@@ -107,8 +115,12 @@ function RoleRow({
         {!(MODEL_OPTIONS[role.provider] ?? []).includes(role.model) && <option value={role.model}>{modelShort(role.model)}</option>}
       </select>
     </div>
+    <div style={{ ...mono, fontSize: 10, color: rec.spend ? 'var(--maestro)' : 'var(--c-voice)' }}>↳ {rec.note}</div>
+    </div>
   );
 }
+
+const selectStyleMeta: React.CSSProperties = { fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '.06em', flex: 'none' };
 
 function Header({ children }: { children: React.ReactNode }) {
   return (
@@ -126,6 +138,7 @@ function ProviderRow({ p, first, onKey }: { p: Provider; first: boolean; onKey: 
       <span style={{ fontSize: 14, color: 'var(--text)', width: 78, flex: 'none' }}>
         {p.label}
         {p.local && <span style={{ fontSize: 11, color: 'var(--text-3)' }}> · local</span>}
+        {p.fromEnv && <span style={{ fontSize: 11, color: 'var(--text-3)' }} title="key read from .env.local — typing one here replaces it"> · .env</span>}
       </span>
       <input
         type="password"

@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:local": "tsc -b && vite build --mode localdev",
     "preview": "vite preview --port 4173",
+    "preview:local": "npm run build:local && vite preview --port 4173",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:browser": "vitest run --project browser",
@@ -17,6 +19,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.6.0",
     "@codemirror/lang-javascript": "^6.2.2",
     "@codemirror/language": "^6.10.2",

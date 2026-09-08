@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../state/store';
+import { LOADED_PACKS } from '../theme/tokens';
 
 const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 type Tab = 'OUTLINE' | 'FILES' | 'PACKS';
@@ -39,7 +40,10 @@ export function Shelf() {
 function SurfaceRail() {
   const open = useStore((s) => s.openSurface);
   const chips: { label: string; s: Parameters<typeof open>[0] }[] = [
+    { label: '⟐ history', s: 'history' },
+    { label: '⌘O projects', s: 'projects' },
     { label: '⧉ arrange', s: 'arrangement' },
+    { label: '⚡ verbs', s: 'directives' },
     { label: '♪ staff', s: 'notation' },
     { label: '↗ providers', s: 'providers' },
   ];
@@ -71,12 +75,12 @@ function Outline() {
     <>
       <Heading>VOICES — {voices.length}</Heading>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, ...mono, fontSize: 12 }}>
-        {voices.map((v) => {
+        {voices.map((v, i) => {
           const isActive = v.id === active;
           const dimmed = v.muted || (anySolo && !v.solo);
           return (
             <div
-              key={v.id}
+              key={`voice:${i}:${v.id}`}
               onClick={() => select(v.id)}
               style={{
                 display: 'flex',
@@ -153,30 +157,69 @@ function ShelfRow({ icon, children, onClick }: { icon: string; children: React.R
   );
 }
 
+// FILES reads the live project — its on-disk shape (spec §08) + recent sets,
+// not a mock array (§10 quick win).
 function Files() {
-  const files = ['set—02.refrain', 'intro.refrain', 'stems/', 'samples/', 'patches/'];
+  const projectName = useStore((s) => s.projectName);
+  const voices = useStore((s) => s.voices);
+  const scenes = useStore((s) => s.scenes);
+  const history = useStore((s) => s.history);
+  const projects = useStore((s) => s.projects);
+  const openProject = useStore((s) => s.openProject);
+  const openSurface = useStore((s) => s.openSurface);
+  const commits = history.filter((c) => !c.parked).length;
+  const others = projects.filter((p) => p.name !== projectName).slice(0, 4);
+
   return (
     <>
-      <Heading>PROJECT · nightjar</Heading>
-      {files.map((f) => (
-        <ShelfRow key={f} icon={f.endsWith('/') ? '▸' : '◦'}>
-          {f}
-        </ShelfRow>
-      ))}
+      <Heading>PROJECT · {projectName}</Heading>
+      <ShelfRow icon="▾">{projectName}.refrain/</ShelfRow>
+      <div style={{ paddingLeft: 12 }}>
+        <ShelfRow icon="◦">score.strudel <Dim>· {voices.length} voices</Dim></ShelfRow>
+        <ShelfRow icon="◦" onClick={() => openSurface('history')}>history.json <Dim>· {commits} commits</Dim></ShelfRow>
+        <ShelfRow icon="◦" onClick={() => openSurface('arrangement')}>scenes.json <Dim>· {scenes.length}</Dim></ShelfRow>
+        <ShelfRow icon="◦" onClick={() => openSurface('patch')}>patches/</ShelfRow>
+        <ShelfRow icon="◦" onClick={() => openSurface('foundry')}>samples/</ShelfRow>
+      </div>
+      {others.length > 0 && (
+        <>
+          <div style={{ margin: '16px 0 8px' }}><Heading>RECENT SETS</Heading></div>
+          {others.map((p) => (
+            <ShelfRow key={p.id} icon="▸" onClick={() => openProject(p.id)}>
+              {p.name}
+            </ShelfRow>
+          ))}
+        </>
+      )}
+      <button onClick={() => openSurface('projects')} style={{ ...mono, fontSize: 11, color: 'var(--maestro)', padding: '10px 8px 0', textAlign: 'left' }}>
+        ⌘O all projects
+      </button>
     </>
   );
 }
 
+// PACKS lists the sample packs the engine actually prebakes (spec §10).
 function Packs() {
-  const packs = ['Dirt-Samples', 'RolandTR909', 'RolandTR808', 'EmuSP12', 'VCSL', 'mridangam'];
+  const openSurface = useStore((s) => s.openSurface);
   return (
     <>
-      <Heading>SAMPLE PACKS</Heading>
-      {packs.map((p) => (
+      <Heading>SAMPLE PACKS · loaded</Heading>
+      {LOADED_PACKS.map((p) => (
         <ShelfRow key={p} icon="▦">
           {p}
         </ShelfRow>
       ))}
+      <div style={{ margin: '16px 0 8px' }}><Heading>DRUM BANKS</Heading></div>
+      {['RolandTR909', 'RolandTR808', 'RolandTR707'].map((b) => (
+        <ShelfRow key={b} icon="◈">{b}</ShelfRow>
+      ))}
+      <button onClick={() => openSurface('foundry')} style={{ ...mono, fontSize: 11, color: 'var(--maestro)', padding: '10px 8px 0', textAlign: 'left' }}>
+        + foundry
+      </button>
     </>
   );
+}
+
+function Dim({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: 'var(--text-dim)' }}>{children}</span>;
 }

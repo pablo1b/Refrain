@@ -30,22 +30,24 @@ export function PerformanceMode() {
   const scenes = useStore((s) => s.scenes);
   const activeSceneId = useStore((s) => s.activeSceneId);
   const cps = useStore((s) => s.cps);
-  const playing = useStore((s) => s.playing);
   const setMode = useStore((s) => s.setMode);
   const launch = useStore((s) => s.launchScene);
   const snapshot = useStore((s) => s.snapshotScene);
   const panic = useStore((s) => s.panic);
   const hush = useStore((s) => s.hush);
+  const midiOn = useStore((s) => s.midiOn);
   const anySolo = voices.some((v) => v.solo);
-  const levels = useMeters(voices.map((v) => v.id), playing);
+  const { levels, measured } = useMeters();
 
+  // Esc leaves the live view. THE TRANSPORT IS NOT HANDLED HERE: App.tsx owns the
+  // single transport binding (§12.3). A second owner double-fired togglePlay(),
+  // which stopped and restarted the scheduler and reset the on-screen cycle — it
+  // read exactly like the v0.1 "clock dies" bug (B-5).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMode('studio');
-      if (e.key === ' ') {
-        e.preventDefault();
-        useStore.getState().togglePlay();
-      }
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setMode('studio');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -65,10 +67,10 @@ export function PerformanceMode() {
         <div style={{ borderRight: '1px solid var(--line-3)', padding: '22px 18px', display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, overflowY: 'auto' }}>
           <span style={{ ...mono, fontSize: 10, letterSpacing: '.2em', color: 'var(--text-dim)' }}>LIVE</span>
           <div style={{ ...mono, fontSize: 12, lineHeight: 2, color: 'var(--text-2)' }}>
-            {voices.map((v) => {
+            {voices.map((v, i) => {
               const dim = v.muted || (anySolo && !v.solo);
               return (
-                <div key={v.id}>
+                <div key={`live:${i}:${v.id}`}>
                   <span style={{ color: 'var(--c-voice)' }}>{v.sigil}</span>{' '}
                   <span style={{ color: dim ? 'var(--text-dim)' : v.color }}>{dim ? '○' : '●'}</span>
                 </div>
@@ -76,14 +78,14 @@ export function PerformanceMode() {
             })}
           </div>
           <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {voices.slice(0, 6).map((v) => {
+            {voices.slice(0, 6).map((v, i) => {
               const dim = v.muted || (anySolo && !v.solo);
               const level = dim ? 0 : (levels[v.id] ?? 0) * 100;
               return (
                 <div
-                  key={v.id}
+                  key={`meter:${i}:${v.id}`}
                   role="meter"
-                  aria-label={`${v.sigil} level`}
+                  aria-label={`${v.sigil} ${measured[v.id] ? 'level' : 'activity'}`}
                   aria-valuenow={Math.round(level)}
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -118,7 +120,13 @@ export function PerformanceMode() {
             </button>
           );
         })}
-        <span style={{ marginLeft: 'auto', ...mono, fontSize: 10, color: 'var(--text-dim)' }}>◎ MIDI mappable</span>
+        <button
+          onClick={() => { setMode('studio'); useStore.getState().openSurface('ports'); }}
+          title="MIDI / OSC sync-out — the Cycle as master (§12.7)"
+          style={{ marginLeft: 'auto', ...mono, fontSize: 10, color: midiOn ? 'var(--live)' : 'var(--text-dim)' }}
+        >
+          ◎ {midiOn ? 'MIDI sync-out live' : 'MIDI sync-out'}
+        </button>
         <button onClick={hush} style={{ ...mono, fontSize: 13, fontWeight: 700, color: 'var(--live-ink)', background: 'var(--hush)', borderRadius: 7, padding: '8px 16px' }}>
           HUSH
         </button>

@@ -1,8 +1,8 @@
 {
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
   "permissions": {
+    "allow": [
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__*"
+    ],
     "defaultMode": "auto"
   },
   "statusLine": {

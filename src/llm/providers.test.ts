@@ -8,6 +8,11 @@ import {
   loadRoles,
   saveRoles,
   defaultProviders,
+  defaultRoles,
+  envSeedEnabled,
+  envSeededProviderIds,
+  hasReasoningTier,
+  resolveEffort,
   MODEL_OPTIONS,
 } from './providers';
 import type { Provider } from '../types';
@@ -115,6 +120,102 @@ describe('localStorage persistence', () => {
   });
 });
 
+// `.env.local` seeding. Every case passes an explicit env object rather than
+// touching import.meta.env, so a developer's real .env.local can't reach these.
+describe('env seeding', () => {
+  beforeEach(() => localStorage.clear());
+
+  const devEnv = (over: Record<string, unknown> = {}) => ({ DEV: true, MODE: 'development', ...over });
+  const googleOnly = (over: Record<string, unknown> = {}) => devEnv({ VITE_GOOGLE_API_KEY: 'AIza-test', ...over });
+
+  describe('envSeedEnabled', () => {
+    it('is on for dev and for an explicit local build', () => {
+      expect(envSeedEnabled({ DEV: true, MODE: 'development' })).toBe(true);
+      expect(envSeedEnabled({ DEV: false, MODE: 'localdev' })).toBe(true);
+    });
+
+    // a shipping bundle must never inline a key; the suite must not depend on one
+    it('is off for a production build and under test', () => {
+      expect(envSeedEnabled({ DEV: false, MODE: 'production' })).toBe(false);
+      expect(envSeedEnabled({ DEV: true, MODE: 'test' })).toBe(false);
+    });
+  });
+
+  it('reports which providers the env supplies, in default order', () => {
+    expect(envSeededProviderIds(googleOnly())).toEqual(['google']);
+    expect(envSeededProviderIds(devEnv({ VITE_ANTHROPIC_API_KEY: 'sk-a', VITE_GOOGLE_API_KEY: 'g' }))).toEqual([
+      'anthropic',
+      'google',
+    ]);
+    expect(envSeededProviderIds(devEnv())).toEqual([]);
+    // whitespace is not a key
+    expect(envSeededProviderIds(devEnv({ VITE_GOOGLE_API_KEY: '   ' }))).toEqual([]);
+  });
+
+  it('fills a blank key and marks it as coming from the env', () => {
+    const google = loadProviders(googleOnly()).find((p) => p.id === 'google')!;
+    expect(google.key).toBe('AIza-test');
+    expect(google.connected).toBe(true);
+    expect(google.fromEnv).toBe(true);
+    // untouched providers stay disconnected
+    expect(loadProviders(googleOnly()).find((p) => p.id === 'anthropic')!.connected).toBe(false);
+  });
+
+  it('never overrides a key typed in the UI', () => {
+    saveProviders(defaultProviders().map((p) => (p.id === 'google' ? { ...p, key: 'typed', connected: true } : p)));
+    const google = loadProviders(googleOnly()).find((p) => p.id === 'google')!;
+    expect(google.key).toBe('typed');
+    expect(google.fromEnv).toBeFalsy();
+  });
+
+  it('does not persist an env key — the file stays its only home', () => {
+    saveProviders(loadProviders(googleOnly()));
+    const raw = JSON.parse(localStorage.getItem('refrain.providers')!) as Provider[];
+    const google = raw.find((p) => p.id === 'google')!;
+    expect(google.key).toBe('');
+    expect(google.connected).toBe(false);
+    // and it still comes back from the env on the next load
+    expect(loadProviders(googleOnly()).find((p) => p.id === 'google')!.key).toBe('AIza-test');
+  });
+
+  it('overrides the ollama endpoint', () => {
+    const env = devEnv({ VITE_OLLAMA_ENDPOINT: 'http://127.0.0.1:9999' });
+    expect(loadProviders(env).find((p) => p.id === 'ollama')!.endpoint).toBe('http://127.0.0.1:9999');
+    expect(loadProviders(devEnv()).find((p) => p.id === 'ollama')!.endpoint).toBe('http://127.0.0.1:11434');
+  });
+
+  it('is inert when seeding is off', () => {
+    const prod = { DEV: false, MODE: 'production', VITE_GOOGLE_API_KEY: 'AIza-test' };
+    expect(loadProviders(prod).find((p) => p.id === 'google')!.key).toBe('');
+    expect(loadProviders(prod).find((p) => p.id === 'google')!.connected).toBe(false);
+  });
+
+  // the Gemini-only case: without this, every role still points at Anthropic
+  // and the Maestro reads "offline · directives" despite a working key.
+  it('points the online roles at the seeded provider on a fresh profile', () => {
+    const roles = loadRoles(googleOnly());
+    for (const id of ['directives', 'generation', 'theory'] as const) {
+      expect(roles.find((r) => r.id === id)!.provider).toBe('google');
+      expect(roles.find((r) => r.id === id)!.model).toBe('gemini-flash-lite-latest');
+    }
+    // the local fallback role is never rerouted
+    expect(roles.find((r) => r.id === 'offline')!.provider).toBe('ollama');
+  });
+
+  it('leaves per-role models alone when the default provider is the seeded one', () => {
+    const roles = loadRoles(devEnv({ VITE_ANTHROPIC_API_KEY: 'sk-a' }));
+    expect(roles.find((r) => r.id === 'directives')!.model).toBe('claude-haiku-4-5');
+    expect(roles.find((r) => r.id === 'generation')!.model).toBe('claude-sonnet-4-6');
+  });
+
+  it('leaves saved routing alone', () => {
+    saveRoles(defaultRoles().map((r) => (r.id === 'generation' ? { ...r, provider: 'openai', model: 'gpt-4o' } : r)));
+    const roles = loadRoles(googleOnly());
+    expect(roles.find((r) => r.id === 'generation')!.provider).toBe('openai');
+    expect(roles.find((r) => r.id === 'directives')!.provider).toBe('anthropic');
+  });
+});
+
 describe('MODEL_OPTIONS', () => {
   // The constant documents "first entry is each provider's default". That holds
   // for openai/google/ollama against defaultProviders(); anthropic is the one
@@ -205,5 +306,30 @@ describe('chat()', () => {
     await expect(
       chat({ provider: prov(), model: 'claude-sonnet-4-6', system: 's', user: 'u' }),
     ).rejects.toThrow(/429/);
+  });
+});
+
+// Effort × routing reconciliation (spec §12.4).
+describe('hasReasoningTier', () => {
+  it('anthropic models all reason; openai only o-series; gemini/local do not', () => {
+    expect(hasReasoningTier('anthropic', 'claude-haiku-4-5')).toBe(true);
+    expect(hasReasoningTier('openai', 'o3-mini')).toBe(true);
+    expect(hasReasoningTier('openai', 'gpt-4o')).toBe(false);
+    expect(hasReasoningTier('google', 'gemini-flash-latest')).toBe(false);
+    expect(hasReasoningTier('ollama', 'llama3')).toBe(false);
+  });
+});
+
+describe('resolveEffort', () => {
+  it('collapses to fast when the model has no reasoning tier', () => {
+    expect(resolveEffort('thinking', true, false)).toEqual({ thinking: false, trace: false });
+  });
+  it('fast is always no-trace; thinking is always reasoning', () => {
+    expect(resolveEffort('fast', true, true)).toEqual({ thinking: false, trace: false });
+    expect(resolveEffort('thinking', false, true)).toEqual({ thinking: true, trace: true });
+  });
+  it('auto lets the role decide — tasks think, directives do not', () => {
+    expect(resolveEffort('auto', true, true)).toEqual({ thinking: true, trace: true });
+    expect(resolveEffort('auto', false, true)).toEqual({ thinking: false, trace: false });
   });
 });

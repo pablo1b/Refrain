@@ -202,9 +202,23 @@ textarea {
   }
 }
 
-/* motion that respects the room */
+/* ---- the reduced-motion contract (spec §12.8) ----
+   Decorative motion (pulse, settle, flash, blink) stops; information-bearing
+   motion (the playheads, the meters) is handled in JS and degraded to discrete
+   steps there. The authoritative signal is html[data-reduced-motion], which the
+   store sets from the RESOLVED preference (a manual Settings → Accessibility
+   choice overrides the OS in either direction). The media query below is only a
+   pre-hydration fallback for the flash before the store applies the attribute. */
+html[data-reduced-motion='on'] *,
+html[data-reduced-motion='on'] *::before,
+html[data-reduced-motion='on'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
 @media (prefers-reduced-motion: reduce) {
-  .refr-settle {
+  html:not([data-reduced-motion='off']) .refr-settle {
     animation: none !important;
   }
 }

@@ -41,3 +41,16 @@ export const SAMPLE_PACKS = {
   dough: 'https://raw.githubusercontent.com/felixroos/dough-samples/main/',
   todepond: 'https://raw.githubusercontent.com/todepond/samples/main/',
 };
+
+/** The sample-pack JSON manifests the engine prebakes (single source of truth). */
+export const SAMPLE_JSON = [
+  'tidal-drum-machines.json',
+  'piano.json',
+  'Dirt-Samples.json',
+  'EmuSP12.json',
+  'vcsl.json',
+  'mridangam.json',
+];
+
+/** Display names for the loaded packs — what the Shelf PACKS tab shows. */
+export const LOADED_PACKS = ['tidal-drum-machines', 'piano', 'Dirt-Samples', 'EmuSP12', 'VCSL', 'mridangam'];
